@@ -2,6 +2,8 @@ import torch as th
 import torch.nn as nn
 import numpy as np
 import time
+import os
+from pathlib import Path
 from branching_bad.dataset import DatasetRegistry, format_data
 from branching_bad.model import ModelRegistry
 from branching_bad.utils.logger import Logger
@@ -32,6 +34,10 @@ class Pretrain():
         self.cmd_nllloss = th.nn.NLLLoss(reduce=False)
         self.param_nllloss = th.nn.NLLLoss(reduce=False)
         
+        self.save_dir = config.SAVER.DIR
+        self.save_freq = config.SAVER.EPOCH
+        
+        
         
 
     def start_experiment(self,):
@@ -39,11 +45,11 @@ class Pretrain():
         dl_specs = self.dl_specs
         train_loader = th.utils.data.DataLoader(self.train_dataset, batch_size=dl_specs.BATCH_SIZE, pin_memory=False,
                                             num_workers=dl_specs.NUM_WORKERS, shuffle=False, collate_fn=format_data,
-                                            persistent_workers=True)
+                                            persistent_workers=dl_specs.NUM_WORKERS>0)
         
-        # val_loader = th.utils.data.DataLoader(self.val_dataset, batch_size=dl_specs.VAL_BATCH_SIZE, pin_memory=False,
-        #                                     num_workers=0, shuffle=False, collate_fn=format_data,
-        #                                     persistent_workers=True)
+        val_loader = th.utils.data.DataLoader(self.val_dataset, batch_size=dl_specs.BATCH_SIZE, pin_memory=False,
+                                            num_workers=dl_specs.VAL_WORKERS, shuffle=False, collate_fn=format_data,
+                                            persistent_workers=dl_specs.VAL_WORKERS>0)
         # shift model: 
         self.model = self.model.cuda()
         
@@ -62,14 +68,18 @@ class Pretrain():
                 loss.backward()
                 self.optimizer.step()
 
-                statistics = self._calculate_statistics(output, target)
-
                 if iter_ind % self.log_interval == 0:
-                    statistics.update(loss_statistics)
-                    self.logger.log_statistics(statistics, epoch, iter_ind)
+                    self.log_statistics(output, target, n_actions, loss_statistics, epoch, iter_ind)
             # Evaluate:
             self._evaluate(epoch)
-    
+            # Save model checkpoint?
+            if epoch % self.save_freq == 0:
+                self._save_model(epoch)
+            
+    def _save_model(self, epoch):
+        Path(self.save_dir).mkdir(parents=True, exist_ok=True)
+        th.save(self.model.state_dict(), os.path.join(self.save_dir, f"pretrain_{epoch}.pt"))
+        
     def _calculate_loss(self, output, target):
         # calculate loss
         # return loss, loss_statistics
@@ -100,14 +110,37 @@ class Pretrain():
         return total_loss, statistics
         
         
-    def _calculate_statistics(self, output, target):
-        statistics = {}
+    def log_statistics(self, output, target, n_actions, loss_statistics, epoch, iter_ind):
         # accuracy
         # input avg. length
+        all_stats = {"Epoch": epoch, "Iter": iter_ind}
+        cmd_distr, param_distr = output
+        param_distr = param_distr.swapaxes(1, 2)
+        cmd_distr_target = target[:, 0]
+        param_distr_target = target[:, 1:-1]
         
-        return statistics
+        cmd_action = th.argmax(cmd_distr, dim=-1)
+        match = (cmd_action == cmd_distr_target).float()
+        cmd_acc = th.mean(match)
+        
+        param_action = th.argmax(param_distr, dim=1)
+        match = (param_action == param_distr_target).float()
+        param_acc = th.mean(match)
+        mean_expr_len = th.mean(n_actions.float())
+        
+        statistics = {
+            "cmd_acc": cmd_acc.item(),
+            "param_acc": param_acc.item(),
+            "mean_expr_len": mean_expr_len.item()
+        }
+        all_stats.update(statistics)
+        all_stats.update(loss_statistics)
+        
+        self.logger.log_statistics(all_stats, epoch, iter_ind)
+        
         
         
     def _evaluate(self, epoch):
         ...
         # need beam search here.
+        
