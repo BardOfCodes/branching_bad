@@ -7,6 +7,7 @@ import json
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+
 class SlackNotifier():
 
     def __init__(self, exp_name, config):
@@ -21,19 +22,20 @@ class SlackNotifier():
             "channel": self.channel,
             "icon_emoji": ":clapper:",
         }
+
     def start_exp(self):
         if self.enable:
             self.start_time = datetime.datetime.now()
             dump = self.dump.copy()
             message = ['Training Started!',
-                        'Experiment name: %s' % self.exp_name,
-                        'Machine name: %s' % self.host_name,
-                        'Starting date: %s' % self.start_time.strftime(DATE_FORMAT)]
+                       'Experiment name: %s' % self.exp_name,
+                       'Machine name: %s' % self.host_name,
+                       'Starting date: %s' % self.start_time.strftime(DATE_FORMAT)]
             dump['text'] = '\n'.join(message)
             content = requests.post(self.webhook_url, json.dumps(dump))
             self.message_info = content
         # set the message id
-    
+
     def log_info(self, info):
         """ Allow for generic updates on the thread (maybe per eval).
         """
@@ -50,9 +52,11 @@ class SlackNotifier():
             contents = ["Your training has crashed ☠️",
                         'Machine name: %s' % self.host_name,
                         'Experiment name: %s' % self.exp_name,
-                        'Starting date: %s' % self.start_time.strftime(DATE_FORMAT),
+                        'Starting date: %s' % self.start_time.strftime(
+                            DATE_FORMAT),
                         'Crash date: %s' % end_time.strftime(DATE_FORMAT),
-                        'Crashed training duration: %s\n\n' % str(elapsed_time),
+                        'Crashed training duration: %s\n\n' % str(
+                            elapsed_time),
                         "Here's the error:",
                         '%s\n\n' % ex,
                         "Traceback:",
@@ -60,4 +64,3 @@ class SlackNotifier():
             dump['text'] = '\n'.join(contents)
             dump['icon_emoji'] = ':skull_and_crossbones:'
             content = requests.post(self.webhook_url, json.dumps(dump))
-

@@ -4,9 +4,10 @@ import numpy as np
 import torch as th
 from .utils import euler2quat
 
+
 class CSG2DParser():
 
-    def __init__(self,device):
+    def __init__(self, device):
 
         self.command_n_param = {
             "sphere": 5,
@@ -24,7 +25,7 @@ class CSG2DParser():
             "union": "B",
             "intersection": "B",
             "difference": "B",
-        }        
+        }
         self.transform_sequence = ["translate", "scale", "rotate"]
 
         self.device = device
@@ -47,7 +48,7 @@ class CSG2DParser():
                     param_str = expr.split("(")[1][:-1]
                     param = np.array([float(x.strip())
                                      for x in param_str.split(",")])
-                    
+
                     param[:2] *= -1
                     param[2:4] **= -1
                     param[4] *= math.pi / 180.

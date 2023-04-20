@@ -360,18 +360,21 @@ class CSG2DCompiler:
             primitives = draw_func(rotated_points)
             all_primitives.append(primitives)
         all_primitives = th.cat(all_primitives, dim=0)
-        processed_primitives = th.where(inversion_array, -all_primitives, all_primitives)
+        processed_primitives = th.where(
+            inversion_array, -all_primitives, all_primitives)
         # Make this cheap:
         # P U N
         processed_primitives = processed_primitives.unsqueeze(1)
-        processed_primitives = processed_primitives.expand(-1, all_intersections.shape[-1], -1)
+        processed_primitives = processed_primitives.expand(
+            -1, all_intersections.shape[-1], -1)
         # P U N
         all_intersections = all_intersections.unsqueeze(-1)
-        all_intersections = all_intersections.expand(-1, -1, processed_primitives.shape[2])
+        all_intersections = all_intersections.expand(
+            -1, -1, processed_primitives.shape[2])
         fill = th.where(all_intersections, processed_primitives, self.neg_inf)
         # Intersections
         intersections = th.max(fill, 0)[0]
         # Unions
         output = th.min(intersections, 0)[0]
-        
+
         return output

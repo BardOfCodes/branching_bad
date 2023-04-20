@@ -3,7 +3,7 @@ class ModelRegistry:
 
     @classmethod
     def register(cls, name):
-        
+
         def inner_wrapper(wrapped_class):
             cls._registry[name] = wrapped_class
             return wrapped_class

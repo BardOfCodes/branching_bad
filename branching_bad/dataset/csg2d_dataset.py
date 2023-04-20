@@ -69,15 +69,16 @@ class CSG2DDataset(th.utils.data.IterableDataset):
         #     draw_transforms = {k: v.cuda() for k, v in draw_transforms.items()}
         #     intersection_matrix = intersection_matrix.cuda()
         #     inversion_array = inversion_array.cuda()
-            
+
         # else:
         expression = self.expressions[index]
         draw_transforms, inversion_array, intersection_matrix = self.executor.compile(
             expression)
         actions = self.model_translator.expression_to_action(expression)
         n_actions = actions.shape[0]
-        actions = np.pad(actions, ((0, self.max_actions - n_actions), (0, 0)),  mode="constant", constant_values=0)
-        
+        actions = np.pad(actions, ((0, self.max_actions - n_actions),
+                         (0, 0)),  mode="constant", constant_values=0)
+
         # store_transform = {k: v.cpu() for k, v in draw_transforms.items()}
         # self.cache[index] = (
         #     store_transform, inversion_array.cpu(), intersection_matrix.cpu(), actions, n_actions)

@@ -43,7 +43,8 @@ class Transforms2D():
         """
         sin = math.sin(param[0])
         cos = math.cos(param[0])
-        affine_matrix = np.array([[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]]).astype(np.float32)
+        affine_matrix = np.array(
+            [[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]]).astype(np.float32)
         affine_matrix = th.from_numpy(affine_matrix).to(self.device)
         return affine_matrix
 
@@ -83,15 +84,19 @@ class Transforms2D():
 
         rotation = affine_matrix[:3, :3] / th.reshape(scale, (3, 1))
         q = th.empty(4, device=rotation.device)
-        q[3] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device), 1.0 + rotation[0, 0] + rotation[1, 1] + rotation[2, 2]))
-        q[0] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device), 1.0 + rotation[0, 0] - rotation[1, 1] - rotation[2, 2]))
-        q[1] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device), 1.0 - rotation[0, 0] + rotation[1, 1] - rotation[2, 2]))
-        q[2] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device), 1.0 - rotation[0, 0] - rotation[1, 1] + rotation[2, 2]))
+        q[3] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device),
+                             1.0 + rotation[0, 0] + rotation[1, 1] + rotation[2, 2]))
+        q[0] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device),
+                             1.0 + rotation[0, 0] - rotation[1, 1] - rotation[2, 2]))
+        q[1] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device),
+                             1.0 - rotation[0, 0] + rotation[1, 1] - rotation[2, 2]))
+        q[2] = 0.5 * th.sqrt(th.max(th.tensor([0.0], device=rotation.device),
+                             1.0 - rotation[0, 0] - rotation[1, 1] + rotation[2, 2]))
         q[1] *= th.sign(rotation[2, 1] - rotation[1, 2])
         q[2] *= th.sign(rotation[0, 2] - rotation[2, 0])
         q[3] *= th.sign(rotation[1, 0] - rotation[0, 1])
         q = q / th.norm(q)
-        
+
         return translation, q, scale
 
 

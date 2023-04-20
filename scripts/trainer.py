@@ -6,15 +6,16 @@ from branching_bad.utils.arg_parser import arg_parser
 from branching_bad.utils.notification_utils import SlackNotifier
 import branching_bad.meta_proc as meta_factory
 
+
 def main():
-    
+
     # th.autograd.set_detect_anomaly(True)
     th.backends.cudnn.benchmark = True
     try:
         th.multiprocessing.set_start_method('spawn')
     except RuntimeError:
         pass
-    
+
     args, reminder_args = arg_parser.parse_known_args()
     config = load_config_file(args.config_file, reminder_args)
     if args.debug:
@@ -24,7 +25,7 @@ def main():
         sketch_builder.render_stack_sketch(G, stacking="vertical")
         sketch_builder.export_to_file()
         del sketch_builder
-    
+
     experiment_proc = getattr(meta_factory, config.EXPERIMENT_MODE)
     experiment = experiment_proc(config)
     notif = SlackNotifier(config.NAME, config.NOTIFICATION)
@@ -34,7 +35,7 @@ def main():
     except Exception as ex:
         notif.exp_failed(ex)
         raise ex
-    
-    
+
+
 if __name__ == '__main__':
     main()
