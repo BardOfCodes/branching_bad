@@ -9,7 +9,7 @@ from .transformer_components import LearnablePositionalEncoding, AttnLayer
 
 
 class SEQ_MLP(nn.Module):
-    def __init__(self, size_seq):
+    def __init__(self, size_seq, dropout_rate):
         super(SEQ_MLP, self).__init__()
         layers = []
         n_layers = len(size_seq) - 1
@@ -18,6 +18,7 @@ class SEQ_MLP(nn.Module):
             layers.append(layer)
             if i != (n_layers - 1):
                 layers.append(nn.ReLU())
+                layers.append(nn.Dropout(p=dropout_rate))
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -51,11 +52,11 @@ class BaseTransformer(nn.Module):
             self.num_heads, self.attn_size, self.dropout) for _ in range(self.num_dec_layers)])
 
         # convert to MLPS:
-        self.singular_token_mapper = SEQ_MLP(self.cmd_param_mapper_mlp)
+        self.singular_token_mapper = SEQ_MLP(self.cmd_param_mapper_mlp, self.dropout)
 
-        self.after_attn_process = SEQ_MLP(self.post_attn_mlp)
-        self.cmd_vector = SEQ_MLP(self.cmd_mlp)
-        self.param_predictor = SEQ_MLP(self.param_mlp)
+        self.after_attn_process = SEQ_MLP(self.post_attn_mlp, self.dropout)
+        self.cmd_vector = SEQ_MLP(self.cmd_mlp, self.dropout)
+        self.param_predictor = SEQ_MLP(self.param_mlp, self.dropout)
 
         self.cmd_logsoft = nn.LogSoftmax(dim=1)  # Module
         self.param_logsoft = nn.LogSoftmax(dim=2)  # Module
@@ -65,6 +66,8 @@ class BaseTransformer(nn.Module):
         start_token = th.LongTensor([[0]])  # .to(self.init_device)
         self.register_buffer("start_token", start_token)
         self.register_buffer("attn_mask", attn_mask)
+        
+        
         self.apply(self.initialize_weights)
 
     def set_settings(self, config):
@@ -104,6 +107,8 @@ class BaseTransformer(nn.Module):
             nn.init.kaiming_uniform_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias.data, 0)
+        else:
+            print("WUT")
 
     def enable_beam_mode(self):
         self.beam_mode = True
@@ -201,7 +206,8 @@ class BaseTransformer(nn.Module):
 
         cmd_sim = th.einsum("bk, mk -> bm", cmd_vectors, all_cmd)
         # cmd_distr = th.softmax(cmd_distr, dim = 1)
-        # cmd_logsoft = self.cmd_logsoft(cmd_distr)
+        cmd_sim = 5 * cmd_sim
+        cmd_logsoft = self.cmd_logsoft(cmd_sim)
 
         param_output = self.param_predictor(output)
         param_output = param_output.reshape(-1, 5,
@@ -209,7 +215,7 @@ class BaseTransformer(nn.Module):
         # param_distr = th.softmax(param_output, dim = 2)
         param_logsoft = self.param_logsoft(param_output)
 
-        return cmd_sim, param_logsoft
+        return cmd_logsoft, param_logsoft
 
     def partial_beam_forward(self, x_in, y_in, y_length):
         assert not self.x_count is None, "Need to set x_count"

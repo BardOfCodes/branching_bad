@@ -2,6 +2,7 @@ import torch as th
 import os
 import random
 import numpy as np
+import h5py
 from .dataset_registry import DatasetRegistry
 from branching_bad.domain import CSG2DExecutor, GenNNInterpreter
 
@@ -23,13 +24,15 @@ DATA_PATHS = {
     15: "synthetic/fifteen_ops/expressions.txt",
 }
 TRAIN_PROPORTION = 0.8
+# TRAIN_PROPORTION = 0.0002
 
+CAD_FILE = 'cad/cad.h5' 
 
-@DatasetRegistry.register("CSG2D")
-class CSG2DDataset(th.utils.data.IterableDataset):
+@DatasetRegistry.register("SynthCSG2DDataset")
+class SynthCSG2DDataset(th.utils.data.IterableDataset):
 
     def __init__(self, config, subset, device, *args, **kwargs):
-        super(CSG2DDataset, self).__init__(*args, **kwargs)
+        super(SynthCSG2DDataset, self).__init__(*args, **kwargs)
 
         # load all the files
         expressions = []
@@ -52,7 +55,6 @@ class CSG2DDataset(th.utils.data.IterableDataset):
             random.shuffle(expressions)
 
         self.expressions = expressions
-        self.cache = dict()
         self.executor = CSG2DExecutor(config.EXECUTOR, device=device)
         self.model_translator = GenNNInterpreter(config.NN_INTERPRETER)
         self.epoch_size = config.EPOCH_SIZE
@@ -63,14 +65,6 @@ class CSG2DDataset(th.utils.data.IterableDataset):
 
     def __getitem__(self, index):
 
-        # if index in self.cache:
-        #     draw_transforms, inversion_array, intersection_matrix, actions, n_actions = self.cache[
-        #         index]
-        #     draw_transforms = {k: v.cuda() for k, v in draw_transforms.items()}
-        #     intersection_matrix = intersection_matrix.cuda()
-        #     inversion_array = inversion_array.cuda()
-
-        # else:
         expression = self.expressions[index]
         draw_transforms, inversion_array, intersection_matrix = self.executor.compile(
             expression)
@@ -78,11 +72,6 @@ class CSG2DDataset(th.utils.data.IterableDataset):
         n_actions = actions.shape[0]
         actions = np.pad(actions, ((0, self.max_actions - n_actions),
                          (0, 0)),  mode="constant", constant_values=0)
-
-        # store_transform = {k: v.cpu() for k, v in draw_transforms.items()}
-        # self.cache[index] = (
-        #     store_transform, inversion_array.cpu(), intersection_matrix.cpu(), actions, n_actions)
-
         execution = self.executor.execute(
             draw_transforms, inversion_array, intersection_matrix)
         execution = (execution < 0).float()
@@ -92,3 +81,32 @@ class CSG2DDataset(th.utils.data.IterableDataset):
     def __iter__(self):
         for i in range(self.epoch_size):
             yield self[i]
+
+class CADCSG2DDataset(SynthCSG2DDataset):
+    
+    
+    def __init__(self, config, subset, device, *args, **kwargs):
+        super(SynthCSG2DDataset, self).__init__(*args, **kwargs)
+
+        # load all the files
+        data_file = os.path.join(config.DATA_PATH, CAD_FILE)
+        
+        hf = h5py.File(data_file, "r")
+        if self.mode == "train":
+            data = np.array(hf.get(name="%s_images" % "train"))
+        elif self.mode == "val":
+            data = np.array(hf.get(name="%s_images" % "val"))
+        elif self.mode == "test":
+            data = np.array(hf.get(name="%s_images" % "test"))
+        hf.close()
+        self.targets = data
+
+    def __len__(self):
+        return self.epoch_size
+
+    def __getitem__(self, index):
+
+        output = self.targets[index].copy()
+        output = th.tensor(output)
+        
+        return output

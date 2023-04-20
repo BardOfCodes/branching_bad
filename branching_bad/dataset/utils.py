@@ -2,7 +2,7 @@ import torch as th
 import numpy as np
 
 
-def format_data(batch):
+def format_train_data(batch):
 
     canvas = [x[0] for x in batch]
     canvas = th.stack(canvas, 0)
