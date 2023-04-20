@@ -78,12 +78,13 @@ class CSG2DDataset(th.utils.data.IterableDataset):
         n_actions = actions.shape[0]
         actions = np.pad(actions, ((0, self.max_actions - n_actions), (0, 0)),  mode="constant", constant_values=0)
         
-        store_transform = {k: v.cpu() for k, v in draw_transforms.items()}
+        # store_transform = {k: v.cpu() for k, v in draw_transforms.items()}
         # self.cache[index] = (
         #     store_transform, inversion_array.cpu(), intersection_matrix.cpu(), actions, n_actions)
 
         execution = self.executor.execute(
             draw_transforms, inversion_array, intersection_matrix)
+        execution = (execution < 0).float()
 
         return execution, actions, n_actions
 

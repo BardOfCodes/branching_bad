@@ -5,6 +5,7 @@ from configs.subconfigs.model import MODEL
 
 MACHINE_DIR = "/media/aditya/DATA/projects/branching_bad"
 DATA_PATH = "/home/aditya/data/synthetic_data/FCSG2D_data"
+
 class PretrainConfFactory(CNF):
     
     def __init__(self, name="Pretrain"):
@@ -23,7 +24,7 @@ class PretrainConfFactory(CNF):
         config.MODEL = MODEL.clone()
         
         config.NOTIFICATION = CN()
-        config.NOTIFICATION.ENABLE = True
+        config.NOTIFICATION.ENABLE = False
         config.NOTIFICATION.CHANNEL = "aditya"
         config.NOTIFICATION.WEBHOOK = "https://hooks.slack.com/services/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"
         
@@ -33,8 +34,8 @@ class PretrainConfFactory(CNF):
         config.TRAIN = CN()
         config.TRAIN.DATASET = CN()
         config.TRAIN.DATASET.NAME = "CSG2D"
-        config.TRAIN.DATASET.EPOCH_SIZE = 4000# (8 - 3) * int(8e4)
-        config.TRAIN.DATASET.MAX_ACTIONS = 21
+        config.TRAIN.DATASET.EPOCH_SIZE = (8 - 3) * int(8e4)
+        config.TRAIN.DATASET.MAX_ACTIONS = 22
         config.TRAIN.DATASET.EXPR_N_OPS = list(range(3, 8))
         config.TRAIN.DATASET.DATA_PATH = DATA_PATH
         config.TRAIN.DATASET.EXECUTOR = CSG2D.clone()
@@ -57,9 +58,8 @@ class PretrainConfFactory(CNF):
         
         config.TRAIN_SPECS = CN()
         config.TRAIN_SPECS.LR = 0.003
-        config.TRAIN_SPECS.NUM_EPOCHS = 500
+        config.TRAIN_SPECS.NUM_EPOCHS = 5000
         config.TRAIN_SPECS.LOG_INTERVAL = 50
-        config.TRAIN_SPECS.BATCH_SIZE = 200
         
         
         

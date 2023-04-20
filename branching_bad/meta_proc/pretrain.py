@@ -37,6 +37,8 @@ class Pretrain():
         self.save_dir = config.SAVER.DIR
         self.save_freq = config.SAVER.EPOCH
         
+        self.num_commands = 6
+        
         
         
 
@@ -83,23 +85,29 @@ class Pretrain():
     def _calculate_loss(self, output, target):
         # calculate loss
         # return loss, loss_statistics
-        cmd_distr, param_distr = output
-        param_distr = param_distr.swapaxes(1, 2)
+        cmd_logsf, param_logsf = output
+        param_logsf = param_logsf.swapaxes(1, 2)
         cmd_distr_target = target[:, 0]
         param_distr_target = target[:, 1:-1]
         cmd_type_flag = target[:, -1:]
         n_predictions = target.shape[1] - 1
-        # cmd_one_hot = th.nn.functional.one_hot(cmd_distr, num_classes=cmd_distr.shape[1])
-        cmd_loss = self.cmd_nllloss(cmd_distr, cmd_distr_target)
+        # cmd_onehot = th.nn.functional.one_hot(cmd_distr_target, num_classes=self.num_commands)
+        # cmd_onehot = cmd_onehot.bool()
+        cmd_logsf = cmd_logsf[:, :self.num_commands]
+        # neg_value = 0.1
+        # cmd_loss = th.where(cmd_onehot, -cmd_sim, neg_value * cmd_sim).sum(-1)
+        cmd_loss = self.cmd_nllloss(cmd_logsf, cmd_distr_target)
         avg_cmd_loss = th.mean(cmd_loss, dim=0)
-        param_loss_tensor = self.param_nllloss(param_distr, param_distr_target)
+        
+        param_loss_tensor = self.param_nllloss(param_logsf, param_distr_target)
         
         # param_loss = th.einsum("ik, i -> i", param_loss_tensor, cmd_type_flag.float())
         param_loss = th.mean(param_loss_tensor * cmd_type_flag.float(), dim=-1)
         
         avg_param_loss = th.mean(param_loss, dim=0)
         
-        total_loss = (cmd_loss * 1/n_predictions) + (param_loss * (n_predictions-1)/n_predictions)
+        total_loss = (cmd_loss * 1/n_predictions)  + (param_loss * (n_predictions-1)/n_predictions)
+        # total_loss = cmd_loss#  + (param_loss * (n_predictions-1)/n_predictions)
         total_loss = th.mean(total_loss)
         statistics = {
             "cmd_loss": avg_cmd_loss.item(),
@@ -114,29 +122,33 @@ class Pretrain():
         # accuracy
         # input avg. length
         all_stats = {"Epoch": epoch, "Iter": iter_ind}
-        cmd_distr, param_distr = output
+        cmd_sim, param_distr = output
+        cmd_sim = cmd_sim[:, :self.num_commands]
         param_distr = param_distr.swapaxes(1, 2)
         cmd_distr_target = target[:, 0]
         param_distr_target = target[:, 1:-1]
+        cmd_type_flag = target[:, -1:]
         
-        cmd_action = th.argmax(cmd_distr, dim=-1)
+        cmd_action = th.argmax(cmd_sim, dim=-1)
         match = (cmd_action == cmd_distr_target).float()
         cmd_acc = th.mean(match)
         
         param_action = th.argmax(param_distr, dim=1)
         match = (param_action == param_distr_target).float()
-        param_acc = th.mean(match)
+        
+        param_acc = th.sum(match * cmd_type_flag)/(th.sum(cmd_type_flag) * 5) 
         mean_expr_len = th.mean(n_actions.float())
         
         statistics = {
             "cmd_acc": cmd_acc.item(),
             "param_acc": param_acc.item(),
-            "mean_expr_len": mean_expr_len.item()
+            "expr_len": mean_expr_len.item()
         }
         all_stats.update(statistics)
         all_stats.update(loss_statistics)
         
-        self.logger.log_statistics(all_stats, epoch, iter_ind)
+        log_iter  = epoch * len(self.train_dataset) + iter_ind
+        self.logger.log_statistics(all_stats, log_iter)
         
         
         

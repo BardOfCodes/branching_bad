@@ -6,11 +6,10 @@ class Logger:
     
     def __init__(self, config):
         self.writer = SummaryWriter(config.LOG_DIR)
-        self.header_log_iter = 1000
         
-    def log_statistics(self, statistics, epoch, iter_ind):
+    def log_statistics(self, statistics, log_iter):
         for key, value in statistics.items():
-            self.writer.add_scalar(key, value, epoch*iter_ind)
+            self.writer.add_scalar(key, value, log_iter)
         entries = [statistics.values()]
         headers = list(statistics.keys())
         

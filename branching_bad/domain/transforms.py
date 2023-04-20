@@ -1,5 +1,6 @@
 import numpy as np
 import torch as th
+import math
 
 
 class Transforms2D():
@@ -15,8 +16,8 @@ class Transforms2D():
         self.homogeneous_identity = th.eye(3, device=self.device)
         self.zero_cube = th.zeros(2, 2, device=self.device)
         # For affine -> rotation quaternions
-        self.matrix_k = th.tensor(
-            [[1, -1, -1], [-1, 1, -1], [-1, -1, 1]]).to(self.device)
+        # self.matrix_k = th.tensor(
+        #     [[1, -1, -1], [-1, 1, -1], [-1, -1, 1]]).to(self.device)
 
     def get_affine_identity(self):
         """Return an identity affine matrix.
@@ -30,7 +31,7 @@ class Transforms2D():
             param (np.ndarray)
         """
         matrix = self.homogeneous_identity.clone()
-        param = th.from_numpy(param).to(self.device)
+        param = th.from_numpy(param.astype(np.float32)).to(self.device)
         matrix[:2, 2] = param
         return matrix
 
@@ -40,9 +41,9 @@ class Transforms2D():
         Args:
             param (np.ndarray)
         """
-        sin = np.sin(param)
-        cos = np.cos(param)
-        affine_matrix = np.array([[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]])
+        sin = math.sin(param[0])
+        cos = math.cos(param[0])
+        affine_matrix = np.array([[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]]).astype(np.float32)
         affine_matrix = th.from_numpy(affine_matrix).to(self.device)
         return affine_matrix
 
@@ -52,7 +53,7 @@ class Transforms2D():
         Args:
             scale (_type_): _description_
         """
-        param = th.from_numpy(param).to(self.device)
+        param = th.from_numpy(param.astype(np.float32)).to(self.device)
         affine_matrix = self.homogeneous_identity.clone()
         affine_matrix[0, 0] = param[0]
         affine_matrix[1, 1] = param[1]

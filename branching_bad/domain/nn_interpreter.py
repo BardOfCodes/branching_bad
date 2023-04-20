@@ -49,6 +49,10 @@ class GenNNInterpreter:
         for expr in expression_list:
             cmd_type_params_action_type = self.single_expression_to_action(expr)
             action_array.append(cmd_type_params_action_type)
+        last_expr = expression_list[-1]
+        if last_expr != "$":
+            cmd_type_params_action_type = self.single_expression_to_action("$")
+            action_array.append(cmd_type_params_action_type)
         action_array = np.stack(action_array, 0)
         
         return action_array
@@ -77,7 +81,6 @@ class GenNNInterpreter:
             param = (param - (-1 + self.conversion_delta)) / self.two_scale_delta
             param = np.round(param).astype(np.uint32)
             action_array = np.concatenate([cmd_type, param, action_type], 0)
-            
         return action_array
     
     def action_to_expression(self, actions):

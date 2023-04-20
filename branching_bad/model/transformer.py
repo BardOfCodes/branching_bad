@@ -39,7 +39,7 @@ class BaseTransformer(nn.Module):
         # scale + start and end
         self.param_scale_tokens = nn.Embedding(self.real_param_scale, self.attn_size) 
         # This will be updated:
-        self.command_tokens = nn.Embedding(self.command_token_count + 1, self.attn_size)
+        self.command_tokens = nn.Embedding(self.command_token_count, self.attn_size)
         
         self.attn_layers = nn.ModuleList([AttnLayer(self.num_heads, self.attn_size, self.dropout) for _ in range(self.num_dec_layers)])
         
@@ -67,7 +67,7 @@ class BaseTransformer(nn.Module):
         self.post_attn_size = config.POST_ATTN_SIZE # 256
         self.attn_size = config.ATTN_SIZE # 128 # attn_size 
         self.visual_seq_len = config.VISUAL_SEQ_LENGTH # 8
-        self.out_seq_len = config.OUTPUT_SEQ_LENGTH + 1 #128  + 1# seq_len
+        self.out_seq_len = config.OUTPUT_SEQ_LENGTH#128  + 1# seq_len
         self.num_enc_layers = config.NUM_ENC_LAYERS# 8 # num_layers
         self.num_dec_layers = config.NUM_DEC_LAYERS# 8 # num_layers
         self.num_heads = config.NUM_HEADS# 16# num_heads
@@ -124,7 +124,7 @@ class BaseTransformer(nn.Module):
         sz = self.visual_seq_len + self.out_seq_len
         mask = (th.triu(th.ones(sz, sz)) == 1)
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0)).T
-        mask[:self.visual_seq_len, :self.visual_seq_len] = 0.
+        # mask[:self.visual_seq_len, :self.visual_seq_len] = 0.
         return mask
 
     def generate_key_mask(self, num, device):
@@ -136,21 +136,17 @@ class BaseTransformer(nn.Module):
         
     def generate_start_token(self, num, max_action_size, device):
         if not num == self.start_token.shape[0]:
-            self.start_token = th.LongTensor([[[self.command_tokens.num_embeddings - 1]]]).to(device).repeat(num, 1, 1)
+            self.start_token = th.LongTensor([[self.command_tokens.num_embeddings - 1]]).to(device).repeat(num, 1)
             
     def forward_train(self, x_in, actions_in, n_actions):
 
         batch_size, max_action_size, _ = actions_in.size()
 
-        self.generate_start_token(batch_size, max_action_size, x_in.device)
         cmd_in = actions_in[:, :, 0:1]
         
-        cnn_features = self.cnn_extractor.forward(x_in)
-        self.start_token
-        with_start = th.cat([self.start_token, cmd_in], 1)
-        with_start_token_embeddings = self.command_tokens(with_start)
-        start_embeddings =  with_start_token_embeddings[:, 0:1, 0]
-        cmd_token_embeddings = with_start_token_embeddings[:, 1:]
+        
+        cmd_token_embeddings = self.command_tokens(cmd_in)
+        
         param_in = actions_in[:, :, 1:-1]
         param_token_embeddings = self.param_scale_tokens(param_in)
         
@@ -162,7 +158,8 @@ class BaseTransformer(nn.Module):
         action_type = action_type.expand(-1, -1, self.attn_size)
         token_embeddings = th.where(action_type, token_embeddings, cmd_token_embeddings[:,:,0,:])
         
-        cmd_in = th.cat([start_embeddings, token_embeddings], 1)
+        cmd_in = token_embeddings
+        cnn_features = self.cnn_extractor.forward(x_in)
         
         out = self.pos_encoding(th.cat((cnn_features, cmd_in), dim = 1))
         
@@ -170,7 +167,7 @@ class BaseTransformer(nn.Module):
         
         for attn_layer in self.attn_layers:        
             out = attn_layer(out, self.attn_mask, self.key_mask)
-        seq_out = out[:,self.visual_seq_len:,:]
+        seq_out = out[:,self.visual_seq_len-1:-1,:]
     
         if self.return_all:
             output = self.stack_vectors(seq_out, n_actions)
@@ -222,7 +219,7 @@ class BaseTransformer(nn.Module):
         
         self.generate_start_token(batch_size, y_in.device)
         y_in = th.cat([self.start_token, y_in], 1)
-        y_in = y_in[:,:current_seq_len + 1]
+        y_in = y_in[:,:current_seq_len: -1]
         
         token_embeddings = self.token_embedding(y_in)
 

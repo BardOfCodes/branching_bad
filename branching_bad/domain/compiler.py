@@ -305,7 +305,7 @@ class CSG2DCompiler:
                 latest_transform = transform_stack.pop()
                 new_transform = self.transform_to_execute[c_symbol](
                     param=cmd['param'])
-                updated_transform = th.matmul(new_transform, latest_transform)
+                updated_transform = th.matmul(latest_transform, new_transform)
                 transform_stack.append(updated_transform)
                 inversion_stack.append(inversion_mode)
                 # skip append?
@@ -347,7 +347,6 @@ class CSG2DCompiler:
         points_hom = th.cat([points, th.ones(M, 1)], dim=1).to(self.device)
         # First create all the primitives:
         all_primitives = []
-        st = time.time()
         for draw_type, transforms in draw_transforms.items():
             # print(draw_type, transforms.shape)
             cur_points = points_hom.clone()
@@ -355,7 +354,7 @@ class CSG2DCompiler:
             rotated_points_hom = th.einsum(
                 'nij,mj->nmi', transforms, cur_points)
             # Extract the rotated points from the homogeneous coordinates
-            rotated_points = rotated_points_hom[:, :, :3]
+            rotated_points = rotated_points_hom[:, :, :2]
 
             draw_func = self.draw_to_execute[draw_type]
             primitives = draw_func(rotated_points)
@@ -363,16 +362,16 @@ class CSG2DCompiler:
         all_primitives = th.cat(all_primitives, dim=0)
         processed_primitives = th.where(inversion_array, -all_primitives, all_primitives)
         # Make this cheap:
-        # P N U
-        processed_primitives = processed_primitives.unsqueeze(-1)
-        processed_primitives = processed_primitives.expand(-1, -1, all_intersections.shape[-1])
-        # P N U
-        all_intersections = all_intersections.unsqueeze(1)
-        all_intersections = all_intersections.expand(-1, processed_primitives.shape[1], -1)
+        # P U N
+        processed_primitives = processed_primitives.unsqueeze(1)
+        processed_primitives = processed_primitives.expand(-1, all_intersections.shape[-1], -1)
+        # P U N
+        all_intersections = all_intersections.unsqueeze(-1)
+        all_intersections = all_intersections.expand(-1, -1, processed_primitives.shape[2])
         fill = th.where(all_intersections, processed_primitives, self.neg_inf)
         # Intersections
         intersections = th.max(fill, 0)[0]
         # Unions
-        output = th.min(intersections, 1)[0]
+        output = th.min(intersections, 0)[0]
         
         return output
