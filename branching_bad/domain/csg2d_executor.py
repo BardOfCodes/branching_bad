@@ -12,7 +12,7 @@ class CSG2DExecutor:
 
     def compile(self, expression):
         parsed_graphs, draw_count = self.parser.parse(expression)
-        draw_transforms, inversion_array, intersection_matrix = self.compiler.fast_compile(
+        draw_transforms, inversion_array, intersection_matrix = self.compiler.fast_sub_compile(
             parsed_graphs, draw_count)
         return draw_transforms, inversion_array, intersection_matrix
 
@@ -21,3 +21,7 @@ class CSG2DExecutor:
         canvas = self.compiler.evaluate(
             draw_transforms, inversion_array, intersection_matrix)
         return canvas
+
+    def set_device(self, device):
+        self.parser.set_device(device)
+        self.compiler.set_device(device)

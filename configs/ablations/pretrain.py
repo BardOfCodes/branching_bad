@@ -7,7 +7,7 @@ from configs.subconfigs.model import MODEL
 
 class PretrainConfFactory(CNF):
 
-    def __init__(self, name="PretrainClear", machine="local"):
+    def __init__(self, name="PretrainNew", machine="local"):
         super(PretrainConfFactory, self).__init__()
 
         if machine == "local": 
@@ -31,12 +31,13 @@ class PretrainConfFactory(CNF):
         config.TRAIN = CN()
         config.TRAIN.DATASET = CN()
         config.TRAIN.DATASET.NAME = "SynthCSG2DDataset"
-        config.TRAIN.DATASET.EPOCH_SIZE = (8 - 3) * int(8e4)
+        config.TRAIN.DATASET.EPOCH_SIZE = (9 - 3) * int(8e4)
         config.TRAIN.DATASET.MAX_ACTIONS = MODEL.OUTPUT_SEQ_LENGTH
-        config.TRAIN.DATASET.EXPR_N_OPS = list(range(3, 8))
+        config.TRAIN.DATASET.EXPR_N_OPS = list(range(3, 9))
         config.TRAIN.DATASET.DATA_PATH = DATA_PATH
         config.TRAIN.DATASET.EXECUTOR = CN()
         config.TRAIN.DATASET.EXECUTOR.RESOLUTION = canvas_res
+        config.TRAIN.DATASET.BAKE_FILE = os.path.join(DATA_PATH, "synth_fcsg2d_baked.pt")
 
         config.LOSS = CN()
         config.LOSS.CMD_NEG_COEF = 0.1
@@ -47,12 +48,12 @@ class PretrainConfFactory(CNF):
 
         config.DATA_LOADER = CN()
         config.DATA_LOADER.BATCH_SIZE = 512
-        config.DATA_LOADER.TRAIN_WORKERS = 8
+        config.DATA_LOADER.TRAIN_WORKERS = 4
         config.DATA_LOADER.VAL_WORKERS = 0
         
 
         config.TRAIN_SPECS = CN()
-        config.TRAIN_SPECS.LR = 0.0005
+        config.TRAIN_SPECS.LR = 0.0001
         config.TRAIN_SPECS.NUM_EPOCHS = 5000
         config.TRAIN_SPECS.LOG_INTERVAL = 50
         config.MODEL = MODEL.clone()

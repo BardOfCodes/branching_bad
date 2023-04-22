@@ -41,10 +41,10 @@ class CSG2DParser():
             else:
                 command_type = self.command_symbol_to_type[command_symbol]
                 command_dict = {'type': command_type, "symbol": command_symbol}
-                command_dict["ID"] = draw_count[command_symbol]
-                draw_count[command_symbol] += 1
                 n_param = self.command_n_param[command_symbol]
                 if n_param > 0:
+                    command_dict["ID"] = draw_count[command_symbol]
+                    draw_count[command_symbol] += 1
                     param_str = expr.split("(")[1][:-1]
                     param = np.array([float(x.strip())
                                      for x in param_str.split(",")])
@@ -60,3 +60,6 @@ class CSG2DParser():
                 command_list.append(command_dict)
 
         return command_list, draw_count
+
+    def set_device(self, device):
+        self.device = device

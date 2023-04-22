@@ -151,7 +151,7 @@ class BaseTransformer(nn.Module):
             self.start_token = th.LongTensor(
                 [[self.command_tokens.num_embeddings - 1]]).to(device).repeat(num, 1)
 
-    def forward_train(self, x_in, actions_in, n_actions):
+    def forward_train(self, x_in, actions_in):
 
         batch_size, max_action_size, _ = actions_in.size()
 
@@ -184,10 +184,7 @@ class BaseTransformer(nn.Module):
             out = attn_layer(out, self.attn_mask, self.key_mask)
         seq_out = out[:, self.visual_seq_len-1:-1, :]
 
-        if self.return_all:
-            output = self.stack_vectors(seq_out, n_actions)
-        else:
-            output = self.vector_gather(seq_out, n_actions)
+        output = self.stack_all_vectors(seq_out)
 
         if len(output.shape) == 3:
             output = output.squeeze(1)
@@ -291,4 +288,9 @@ class BaseTransformer(nn.Module):
             selected = vectors[ind, :indices[ind], :]
             output_list.append(selected)
         output = th.cat(output_list, 0)
+        return output
+    
+    
+    def stack_all_vectors(self, vectors):
+        output = vectors.reshape(-1, vectors.shape[-1])
         return output

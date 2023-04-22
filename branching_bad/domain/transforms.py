@@ -11,6 +11,11 @@ class Transforms2D():
     def __init__(self, device):
         self.device = device
         self.setup()
+    
+    def set_device(self, device):
+        self.device = device
+        self.homogeneous_identity = self.homogeneous_identity.to(device)
+        self.zero_cube = self.zero_cube.to(device)
 
     def setup(self):
         self.homogeneous_identity = th.eye(3, device=self.device)

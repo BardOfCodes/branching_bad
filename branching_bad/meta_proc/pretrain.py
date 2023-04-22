@@ -4,9 +4,11 @@ import numpy as np
 import time
 import os
 from pathlib import Path
-from branching_bad.dataset import DatasetRegistry, format_train_data
+from branching_bad.dataset import DatasetRegistry, Collator
+from branching_bad.domain.compiler import CSG2DCompiler
 from branching_bad.model import ModelRegistry
 from branching_bad.utils.logger import Logger
+
 
 
 class Pretrain():
@@ -42,12 +44,17 @@ class Pretrain():
         self.num_commands = config.DOMAIN.NUM_INIT_CMDS
         self.epoch_iters = config.TRAIN.DATASET.EPOCH_SIZE * \
             config.DATA_LOADER.TRAIN_WORKERS // config.DATA_LOADER.BATCH_SIZE
+        
+        resolution = config.TRAIN.DATASET.EXECUTOR.RESOLUTION
+        self.compiler = CSG2DCompiler(resolution, device)
 
     def start_experiment(self,):
         # Create the dataloaders:
         dl_specs = self.dl_specs
+        collator = Collator(self.compiler)
+        
         train_loader = th.utils.data.DataLoader(self.train_dataset, batch_size=dl_specs.BATCH_SIZE, pin_memory=False,
-                                                num_workers=dl_specs.TRAIN_WORKERS, shuffle=False, collate_fn=format_train_data,
+                                                num_workers=dl_specs.TRAIN_WORKERS, shuffle=False, collate_fn=collator,
                                                 persistent_workers=dl_specs.TRAIN_WORKERS > 0)
 
         val_loader = th.utils.data.DataLoader(self.val_dataset, batch_size=dl_specs.BATCH_SIZE, pin_memory=False,
@@ -58,13 +65,11 @@ class Pretrain():
 
         # Train model on the dataset
         for epoch in range(self.start_epoch, self.end_epoch):
-
-            # Train
-            for iter_ind, (canvas, actions, target, n_actions) in enumerate(train_loader):
+            for iter_ind, (canvas, actions, action_validity, n_actions) in enumerate(train_loader):
 
                 # model forward:
-                output = self.model.forward_train(canvas, actions, n_actions)
-                loss, loss_statistics = self._calculate_loss(output, target)
+                output = self.model.forward_train(canvas, actions)
+                loss, loss_statistics = self._calculate_loss(output, actions, action_validity)
 
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
@@ -72,8 +77,7 @@ class Pretrain():
 
                 if iter_ind % self.log_interval == 0:
                     self.log_statistics(
-                        output, target, n_actions, loss_statistics, epoch, iter_ind)
-            # Evaluate:
+                        output, actions, action_validity, n_actions, loss_statistics, epoch, iter_ind)
             self._evaluate(epoch, val_loader)
             # Save model checkpoint?
             if epoch % self.save_freq == 0:
@@ -81,35 +85,33 @@ class Pretrain():
 
     def _save_model(self, prefix="best"):
         Path(self.save_dir).mkdir(parents=True, exist_ok=True)
-        th.save(self.model.state_dict(), os.path.join(
-            self.save_dir, f"pretrain_{prefix}.pt"))
         # th.save(self.model.state_dict(), os.path.join(
-        #     self.save_dir, f"pretrain.pt"))
+        #     self.save_dir, f"pretrain_{prefix}.pt"))
+        th.save(self.model.state_dict(), os.path.join(
+            self.save_dir, f"pretrain.pt"))
 
-    def _calculate_loss(self, output, target):
+    def _calculate_loss(self, output, actions, action_validity):
         # calculate loss
         # return loss, loss_statistics
         cmd_logsf, param_logsf = output
         param_logsf = param_logsf.swapaxes(1, 2)
-        cmd_distr_target = target[:, 0]
-        param_distr_target = target[:, 1:-1]
-        cmd_type_flag = target[:, -1:]
-        n_predictions = target.shape[1] - 1
-        cmd_logsf = cmd_logsf[:, :self.num_commands]
         
-        # cmd_onehot = th.nn.functional.one_hot(
-        #     cmd_distr_target, num_classes=self.num_commands)
-        # cmd_onehot = cmd_onehot.bool()
-        # cmd_loss = th.where(cmd_onehot, -cmd_sim,
-        #                     self.cmd_neg_ceof * cmd_sim).sum(-1)
+        cmd_distr_target = actions[:, :, 0]
+        cmd_distr_target = cmd_distr_target.reshape(-1)
+        cmd_validity = action_validity[:, 0]
+        cmd_logsf = cmd_logsf[:, :self.num_commands]
         cmd_loss = self.cmd_nllloss(cmd_logsf, cmd_distr_target)
-
-        param_loss_tensor = self.param_nllloss(param_logsf, param_distr_target)
-        param_loss = th.mean(param_loss_tensor * cmd_type_flag.float(), dim=-1)
-
-        total_loss = (cmd_loss * 1/n_predictions) + \
-            (param_loss * (n_predictions-1)/n_predictions)
-        total_loss = th.mean(total_loss)
+        cmd_loss = th.where(cmd_validity, cmd_loss, 0)
+        cmd_loss = th.sum(cmd_loss)/th.sum(cmd_validity)
+        
+        param_distr_target = actions[:, :, 1:-1]
+        param_distr_target = param_distr_target.reshape(-1, self.num_commands - 1)
+        param_validity = action_validity[:, 1:-1]
+        param_loss = self.param_nllloss(param_logsf, param_distr_target)
+        param_loss = th.where(param_validity, param_loss, 0)
+        param_loss = th.sum(param_loss)/th.sum(param_validity)
+        
+        total_loss = cmd_loss + param_loss
         stat_obj = {
             "cmd_obj": cmd_loss,
             "param_obj": param_loss,
@@ -118,25 +120,26 @@ class Pretrain():
 
         return total_loss, stat_obj
 
-    def log_statistics(self, output, target, n_actions, loss_obj, epoch, iter_ind):
+    def log_statistics(self, output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind):
         # accuracy
         # input avg. length
         all_stats = {"Epoch": epoch, "Iter": iter_ind}
         cmd_sim, param_distr = output
         cmd_sim = cmd_sim[:, :self.num_commands]
         param_distr = param_distr.swapaxes(1, 2)
-        cmd_distr_target = target[:, 0]
-        param_distr_target = target[:, 1:-1]
-        cmd_type_flag = target[:, -1:]
-
+        cmd_distr_target = actions[:, :, 0].reshape(-1)
+        param_distr_target = actions[:, :, 1:-1]
+        param_distr_target = param_distr_target.reshape(-1, self.num_commands - 1)
+        cmd_validity = action_validity[:, 0]
+        param_validity = action_validity[:, 1:-1]
         cmd_action = th.argmax(cmd_sim, dim=-1)
         match = (cmd_action == cmd_distr_target).float()
-        cmd_acc = th.mean(match)
+        cmd_acc = th.sum(th.where(cmd_validity, match, 0))/th.sum(cmd_validity)
 
         param_action = th.argmax(param_distr, dim=1)
         match = (param_action == param_distr_target).float()
 
-        param_acc = th.sum(match * cmd_type_flag)/(th.sum(cmd_type_flag) * 5)
+        param_acc = th.sum(th.where(param_validity, match, 0))/th.sum(param_validity)
         mean_expr_len = th.mean(n_actions.float())
 
         statistics = {
