@@ -410,7 +410,7 @@ class CSG2DCompiler:
             # Apply the rotation matrices to the point cloud using einsum
             transformed_points_hom = th.einsum('nij,mj->nmi', transforms, cur_points)
             # Extract the rotated points from the homogeneous coordinates
-            rotated_points = transformed_points_hom[:, :, :3]
+            rotated_points = transformed_points_hom[:, :, :2]
             
             draw_func = self.draw_to_execute[draw_type]
             primitives = draw_func(rotated_points)
