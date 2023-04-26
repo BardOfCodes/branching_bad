@@ -48,8 +48,8 @@ class PretrainConfFactory(CNF):
 
         config.DATA_LOADER = CN()
         config.DATA_LOADER.BATCH_SIZE = 512
-        config.DATA_LOADER.TRAIN_WORKERS = 0
-        config.DATA_LOADER.VAL_WORKERS = 0
+        config.DATA_LOADER.TRAIN_WORKERS = 4
+        config.DATA_LOADER.VAL_WORKERS = 2
         
 
         config.TRAIN_SPECS = CN()

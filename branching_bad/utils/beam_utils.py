@@ -1,7 +1,7 @@
 import torch as th
 import numpy as np
 from collections import defaultdict
-def batch_beam_decode(model, canvas, state_machine_class, beam_size=3):
+def batch_beam_decode(model, canvas, state_machine_class, beam_size=10):
     
     device = th.device('cuda')
     batch_size = canvas.shape[0]
@@ -110,7 +110,7 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=3):
                 prob = final_probs[beam_ind, cur_k]
                 batch_id = beam_entry_to_batch_id[beam_ind]
                 prev_logprob = beam_entry_to_logprobability[beam_ind]
-                if prob < 0.0001:
+                if prob == 0:
                     continue
                 prev_partial_seq = partial_sequences[beam_ind]
                 prev_bool_count = bool_count[beam_ind]
@@ -169,7 +169,11 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=3):
             break
     all_actions_seqs = []
     for i in range(batch_size):
-        all_actions_seqs.append(finished_action_seqs[i])
+        cur_seqs = finished_action_seqs[i]
+        if len(cur_seqs) > 0:
+            all_actions_seqs.append(cur_seqs)
+        else:
+            print("WAT")
     # just return all sequences: 
     return all_actions_seqs
     

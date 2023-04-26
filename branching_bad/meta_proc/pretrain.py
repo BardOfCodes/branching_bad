@@ -198,8 +198,9 @@ class Pretrain():
                 # push batch of canvas to stat_estimator
             stat_estimator.eval_batch_execute(pred_canvases, pred_expressions, canvas)
         final_metrics = stat_estimator.get_final_metrics()
+        log_iter = epoch * self.epoch_iters
+        self.logger.log_statistics(final_metrics, log_iter, prefix="val")
         final_score = final_metrics["score"]
-        print(f"final score {final_score}")
         if final_score >= self.best_score:
             self.best_score = final_score
             self._save_model(epoch, "best")
