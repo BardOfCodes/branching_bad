@@ -153,6 +153,25 @@ class BaseTransformer(nn.Module):
 
     def forward_train(self, x_in, actions_in):
 
+        token_embeddings = self.embed_action_sequence(actions_in)
+        cnn_features = self.cnn_extractor.forward(x_in)
+        out = self.pos_encoding(th.cat((cnn_features, token_embeddings), dim=1))
+
+        for attn_layer in self.attn_layers:
+            out = attn_layer(out, self.attn_mask, self.key_mask)
+        seq_out = out[:, self.visual_seq_len-1:-1, :]
+
+        output = self.stack_all_vectors(seq_out)
+
+        if len(output.shape) == 3:
+            output = output.squeeze(1)
+
+        cmd_logsoft, param_logsoft = self.attention_to_cmd_param(output)
+        # cmd_distr = th.softmax(cmd_distr, dim = 1)
+        return cmd_logsoft, param_logsoft
+
+    def embed_action_sequence(self, actions_in):
+        
         batch_size, max_action_size, _ = actions_in.size()
 
         cmd_in = actions_in[:, :, 0:1]
@@ -173,23 +192,32 @@ class BaseTransformer(nn.Module):
         token_embeddings = th.where(
             action_type, token_embeddings, cmd_token_embeddings[:, :, 0, :])
 
-        cmd_in = token_embeddings
+        return token_embeddings
+
+    def extend_seq(self, partial_seq, cmd_in, param_in=None):
+        
+        cmd_token_embeddings = self.command_tokens(cmd_in)
+        cmd_token_embeddings.unsqueeze_(0)
+        if not param_in is None:
+            param_token_embeddings = self.param_scale_tokens(param_in)
+            all_embeddings = th.cat(
+                (cmd_token_embeddings, param_token_embeddings), dim=0)
+            all_embeddings = all_embeddings.reshape(
+                1, -1)
+            cmd_token_embeddings = self.singular_token_mapper(all_embeddings)
+        # new extend the partial seq:
+        new_partial_seq = th.cat((partial_seq.clone(), cmd_token_embeddings), dim=0)
+        return new_partial_seq
+    
+
+    def get_init_sequence(self, x_in):
+        
         cnn_features = self.cnn_extractor.forward(x_in)
-
-        out = self.pos_encoding(th.cat((cnn_features, cmd_in), dim=1))
-
-        # self.generate_key_mask(batch_size, x_in.device)
-
-        for attn_layer in self.attn_layers:
-            out = attn_layer(out, self.attn_mask, self.key_mask)
-        seq_out = out[:, self.visual_seq_len-1:-1, :]
-
-        output = self.stack_all_vectors(seq_out)
-
-        if len(output.shape) == 3:
-            output = output.squeeze(1)
-
-        #
+        out = self.pos_encoding(cnn_features)
+        return out
+        
+    def attention_to_cmd_param(self, output):
+        
         output = self.after_attn_process(output)
 
         cmd_vectors = self.cmd_vector(output)
@@ -203,16 +231,37 @@ class BaseTransformer(nn.Module):
 
         cmd_sim = th.einsum("bk, mk -> bm", cmd_vectors, all_cmd)
         # cmd_distr = th.softmax(cmd_distr, dim = 1)
-        cmd_sim = 5 * cmd_sim
-        cmd_logsoft = self.cmd_logsoft(cmd_sim)
 
         param_output = self.param_predictor(output)
         param_output = param_output.reshape(-1, 5,
                                             self.param_scale_tokens.num_embeddings)
+        
+        cmd_sim = 5 * cmd_sim
+        cmd_logsoft = self.cmd_logsoft(cmd_sim)
         # param_distr = th.softmax(param_output, dim = 2)
         param_logsoft = self.param_logsoft(param_output)
 
         return cmd_logsoft, param_logsoft
+    
+    
+    def forward_beam(self, partial_sequence):
+        total_len = partial_sequence.shape[1]
+        
+        attn_mask = self.attn_mask[:total_len, :total_len]
+        for attn_layer in self.attn_layers:
+            out = attn_layer(partial_sequence, attn_mask, None)
+        seq_out = out[:, -1:, :]
+
+        output = self.stack_all_vectors(seq_out)
+
+        if len(output.shape) == 3:
+            output = output.squeeze(1)
+        #
+        cmd_logsoft, param_logsoft = self.attention_to_cmd_param(output)
+        # cmd_distr = th.softmax(cmd_distr, dim = 1)
+        return cmd_logsoft, param_logsoft
+
+
 
     def partial_beam_forward(self, x_in, y_in, y_length):
         assert not self.x_count is None, "Need to set x_count"

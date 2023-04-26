@@ -7,7 +7,7 @@ from configs.subconfigs.model import MODEL
 
 class PretrainConfFactory(CNF):
 
-    def __init__(self, name="PretrainNew", machine="local"):
+    def __init__(self, name="PretrainEVAL", machine="local"):
         super(PretrainConfFactory, self).__init__()
 
         if machine == "local": 
@@ -48,7 +48,7 @@ class PretrainConfFactory(CNF):
 
         config.DATA_LOADER = CN()
         config.DATA_LOADER.BATCH_SIZE = 512
-        config.DATA_LOADER.TRAIN_WORKERS = 4
+        config.DATA_LOADER.TRAIN_WORKERS = 0
         config.DATA_LOADER.VAL_WORKERS = 0
         
 
@@ -59,6 +59,8 @@ class PretrainConfFactory(CNF):
         config.MODEL = MODEL.clone()
 
         config.VAL = config.TRAIN.clone()
+        config.VAL.DATASET.NAME = "CADCSG2DDataset"
+        config.VAL.BATCH_SIZE = 1024
         
         # non essentials:
         

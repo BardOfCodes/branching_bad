@@ -2,6 +2,9 @@ import torch as th
 import numpy as np
 from collections import defaultdict
 
+def val_collate_fn(batch):
+    batch = th.stack(batch, dim=0).to("cuda")
+    return batch
 def wrap_format_with_compiler(format_func, compiler):
     
     def inner_func(batch):
@@ -51,6 +54,7 @@ def format_train_data_with_compiler(batch, compiler):
                                     all_graphs)
     
     canvas = canvas.reshape(-1, 64, 64)
+    canvas = (canvas<=0).float()
         
     actions = np.stack(actions, 0)
     actions = th.from_numpy(actions).to(canvas.device)

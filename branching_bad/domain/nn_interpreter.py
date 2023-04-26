@@ -1,6 +1,6 @@
 import numpy as np
 import torch as th
-
+from collections import defaultdict
 from .constants import (ROTATE_MULTIPLIER, SCALE_ADDITION, TRANSLATE_MIN, TRANSLATE_MAX,
                         SCALE_MIN, SCALE_MAX, ROTATE_MIN, ROTATE_MAX, DRAW_MIN, DRAW_MAX, CONVERSION_DELTA)
 empty_param_actions = ["union", "intersection", "difference", "$"]
@@ -92,30 +92,41 @@ class GenNNInterpreter:
         return action_array
 
     def action_to_expression(self, actions):
-        _size = actions.shape[0]
+        size_ = len(actions)
         pointer = 0
         expression_list = []
-        for pointer in range(_size):
-            cur_actions = actions[pointer]
-            cur_command = cur_actions[0]
+        while(pointer < size_):
+            cur_command = actions[pointer]
             cur_expr = self.index_to_expr[cur_command]
             n_param = self.expr_to_n_params[cur_expr]
             if n_param > 0:
                 # Has to be for transform or mirror
-                param = np.array(cur_actions[1:])
-                translate_param = -1 + self.conversion_delta + \
-                    param[:2] * self.two_scale_delta
-                scale_param = -1 + self.conversion_delta + \
-                    param[2:4] * self.two_scale_delta + SCALE_ADDITION
-                rotate_param = (-1 + self.conversion_delta +
-                                param[4:5] * self.two_scale_delta) * ROTATE_MULTIPLIER
-
-                param = np.concatenate(
-                    [translate_param, scale_param, rotate_param], 0)
-                param_str = ", ".join([f"{x}" for x in param])
-                cur_expr = f"{cur_expr}({param_str})"
+                param = np.array(actions[pointer+1: pointer + 1 + n_param])
+                translate_param = -1 + self.conversion_delta + param[:2] * self.two_scale_delta
+                scale_param = -1 + self.conversion_delta + param[2:4] * self.two_scale_delta + SCALE_ADDITION
+                rotate_param = (-1 + self.conversion_delta + param[4:5] * self.two_scale_delta) * ROTATE_MULTIPLIER
+                
+                param = np.concatenate([translate_param, scale_param, rotate_param], 0)
+                param_str = ", ".join(["%f" % x for x in param])
+                cur_expr = "%s(%s)" %(cur_expr, param_str)
+                pointer += n_param
             expression_list.append(cur_expr)
+            pointer += 1
+        
+        if expression_list[-1] != "$":
+            expression_list.append("$")
 
         return expression_list
 
     # compute state space as well.
+    def translate_batch(self, pred_action_dict):
+        
+        expressions_dict = []
+        for ind, action_lists in enumerate(pred_action_dict):
+            expressions = []
+            for action_list in action_lists:
+                new_expr = self.action_to_expression(action_list)
+                expressions.append(new_expr)
+            expressions_dict.append(expressions)
+            
+        return expressions_dict

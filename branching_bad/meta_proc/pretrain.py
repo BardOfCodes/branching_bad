@@ -3,11 +3,15 @@ import torch.nn as nn
 import numpy as np
 import time
 import os
+import _pickle as cPickle
 from pathlib import Path
-from branching_bad.dataset import DatasetRegistry, Collator
+from branching_bad.dataset import DatasetRegistry, Collator, val_collate_fn
 from branching_bad.domain.compiler import CSG2DCompiler
+import branching_bad.domain.state_machine as SM
 from branching_bad.model import ModelRegistry
 from branching_bad.utils.logger import Logger
+from branching_bad.utils.metrics import StatEstimator
+from branching_bad.utils.beam_utils import batch_beam_decode
 
 
 
@@ -47,6 +51,10 @@ class Pretrain():
         
         resolution = config.TRAIN.DATASET.EXECUTOR.RESOLUTION
         self.compiler = CSG2DCompiler(resolution, device)
+        
+        self.state_machine_class = getattr(SM, config.DOMAIN.STATE_MACHINE_CLASS)
+        
+        self.best_score = 0
 
     def start_experiment(self,):
         # Create the dataloaders:
@@ -59,7 +67,7 @@ class Pretrain():
 
         val_loader = th.utils.data.DataLoader(self.val_dataset, batch_size=dl_specs.BATCH_SIZE, pin_memory=False,
                                               num_workers=dl_specs.VAL_WORKERS, shuffle=False,
-                                              persistent_workers=dl_specs.VAL_WORKERS > 0)
+                                              persistent_workers=dl_specs.VAL_WORKERS > 0, collate_fn=val_collate_fn)
         # shift model:
         self.model = self.model.cuda()
 
@@ -78,17 +86,26 @@ class Pretrain():
                 if iter_ind % self.log_interval == 0:
                     self.log_statistics(
                         output, actions, action_validity, n_actions, loss_statistics, epoch, iter_ind)
+            # TEMPORARY
+            st = time.time()
             self._evaluate(epoch, val_loader)
+            et = time.time()
+            print(f"eval time: {et-st}")
             # Save model checkpoint?
             if epoch % self.save_freq == 0:
                 self._save_model(epoch)
 
-    def _save_model(self, prefix="best"):
+    def _save_model(self, epoch, prefix="best"):
         Path(self.save_dir).mkdir(parents=True, exist_ok=True)
+        save_obj = {
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "epoch": epoch,
+            "score": self.best_score
+        }
+        cPickle.dump(save_obj, open(os.path.join(self.save_dir, f"{prefix}_model.pt"), "wb"))
         # th.save(self.model.state_dict(), os.path.join(
         #     self.save_dir, f"pretrain_{prefix}.pt"))
-        th.save(self.model.state_dict(), os.path.join(
-            self.save_dir, f"pretrain.pt"))
 
     def _calculate_loss(self, output, actions, action_validity):
         # calculate loss
@@ -158,22 +175,31 @@ class Pretrain():
         log_iter = epoch * self.epoch_iters + iter_ind
         self.logger.log_statistics(all_stats, log_iter, prefix="train")
 
-    def _evaluate(self, epoch, val_loader):
-        ...
 
-    def _new_evaluate(self, epoch, val_loader):
+    def _evaluate(self, epoch, val_loader):
         ...
         # Max Batch size will be BS * Beam Size ^ 2
 
-        metric_obj = MetricObj()
+        stat_estimator = StatEstimator()
+        
         # Validation
+        self.model = self.model.eval()
+        nn_interpreter = self.train_dataset.model_translator
+        executor = self.train_dataset.executor
         for iter_ind, canvas in enumerate(val_loader):
-
             # model forward:
-            pred_expressions = batch_beam_decode(self.model, canvas)
-            metric_obj._calculate_statistics(pred_expressions, canvas)
-
-        final_score = metric_obj.get_final_score()
+            with th.no_grad():
+                pred_actions = batch_beam_decode(self.model, canvas, self.state_machine_class)
+                # mass convert to expressions
+                pred_expressions = nn_interpreter.translate_batch(pred_actions)
+                # expressions to executions
+                pred_canvases = executor.eval_batch_execute(pred_expressions)
+                # select best for each based on recon. metric
+                # push batch of canvas to stat_estimator
+            stat_estimator.eval_batch_execute(pred_canvases, pred_expressions, canvas)
+        final_metrics = stat_estimator.get_final_metrics()
+        final_score = final_metrics["score"]
+        print(f"final score {final_score}")
         if final_score >= self.best_score:
             self.best_score = final_score
-            self._save_model("best")
+            self._save_model(epoch, "best")

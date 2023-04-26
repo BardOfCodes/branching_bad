@@ -133,6 +133,7 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
         expr_obj = (draw_transforms, inversion_array, intersection_matrix)
         return expr_obj, actions, action_validity, n_actions
     
+@DatasetRegistry.register("CADCSG2DDataset")
 class CADCSG2DDataset(SynthCSG2DDataset):
     
     
@@ -141,17 +142,22 @@ class CADCSG2DDataset(SynthCSG2DDataset):
 
         # load all the files
         data_file = os.path.join(config.DATA_PATH, CAD_FILE)
-        
+        self.subset = subset
         hf = h5py.File(data_file, "r")
-        if self.mode == "train":
+        if self.subset == "train":
             data = np.array(hf.get(name="%s_images" % "train"))
-        elif self.mode == "val":
+        elif self.subset == "val":
             data = np.array(hf.get(name="%s_images" % "val"))
-        elif self.mode == "test":
+        elif self.subset == "test":
             data = np.array(hf.get(name="%s_images" % "test"))
         hf.close()
         self.targets = data
+        self.epoch_size = len(data)
 
+    def __iter__(self):
+        for i in range(self.epoch_size):
+            yield self[i]
+            
     def __len__(self):
         return self.epoch_size
 

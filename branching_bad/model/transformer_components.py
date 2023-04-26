@@ -58,3 +58,10 @@ class LearnablePositionalEncoding(nn.Module):
         pe = self.pe(self.pos_arange.repeat(x.shape[0], 1))
         x = x + pe[:, : x.size(1)]
         return self.dropout(x)
+    
+    def get_singular_position(self, x, position):
+        pe = self.pe[position]
+        x = x + pe
+        return self.dropout(x)
+    
+        
