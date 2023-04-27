@@ -10,7 +10,7 @@ class DatasetRegistry:
         return inner_wrapper
 
     @classmethod
-    def get_dataset(cls, config, subset, device):
+    def get_dataset(cls, config, **kwargs):
         dataset_class = cls._registry[config.NAME]
-        dataset = dataset_class(config, subset=subset, device=device)
+        dataset = dataset_class(config, **kwargs)
         return dataset

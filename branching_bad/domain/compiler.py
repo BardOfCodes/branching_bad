@@ -58,7 +58,7 @@ class CSG2DCompiler:
         self.device = device
         self.neg_inf = self.neg_inf.to(self.device)
         self.transforms.set_device(device)
-        
+
     def sphere(self, points):
         """Return SDF at points wwith a sphere centered at origin.
 
@@ -387,19 +387,19 @@ class CSG2DCompiler:
 
         return output
 
-    def batch_evaluate_with_graph(self, collapsed_draws, batch_draw, 
+    def batch_evaluate_with_graph(self, collapsed_draws, batch_draw,
                                   collapsed_inversions, graphs, points=None):
-        
+
         # create primitives:
-        
+
         # first collapse all cuboids in one list
         if points is None:
             points = get_points(self.resolution)
-        
+
         M = points.shape[0]
         # Add a fourth column of ones to the point cloud to make it homogeneous
         points_hom = th.cat([points, th.ones(M, 1)], dim=1).to(self.device)
-        
+
         type_wise_primitives = dict()
         for draw_type, transforms in collapsed_draws.items():
             # print(draw_type, transforms.shape)
@@ -408,10 +408,11 @@ class CSG2DCompiler:
             # transforms = th.stack(transforms, 0)
             cur_points = points_hom.clone()
             # Apply the rotation matrices to the point cloud using einsum
-            transformed_points_hom = th.einsum('nij,mj->nmi', transforms, cur_points)
+            transformed_points_hom = th.einsum(
+                'nij,mj->nmi', transforms, cur_points)
             # Extract the rotated points from the homogeneous coordinates
             rotated_points = transformed_points_hom[:, :, :2]
-            
+
             draw_func = self.draw_to_execute[draw_type]
             primitives = draw_func(rotated_points)
             # inversion = th.stack(collapsed_inversions[draw_type], 0).unsqueeze(1)
@@ -419,29 +420,29 @@ class CSG2DCompiler:
             sign_matrix = inversion * -2 + 1
             primitives = primitives * sign_matrix
             type_wise_primitives[draw_type] = primitives
-        
+
         # next allot the primitive sequentially:
         # calculate offset for each graph
         type_wise_draw_count = defaultdict(int)
         all_outputs = []
         for ind, graph in enumerate(graphs):
-            output = self.execute_graph(graph, type_wise_primitives, type_wise_draw_count)
+            output = self.execute_graph(
+                graph, type_wise_primitives, type_wise_draw_count)
             all_outputs.append(output)
             draw_specs = batch_draw[ind]
             for draw_type in type_wise_draw_count.keys():
                 type_wise_draw_count[draw_type] += draw_specs[draw_type].shape[0]
-        
+
         all_outputs = th.stack(all_outputs, 0)
-        
+
         return all_outputs
-    
-    
+
     def execute_graph(self, cmd_list, primitive_dict, draw_count):
-        
+
         # USING pyeda
         # create propositional expression:
         canvas_stack = []
-        ## Given prefix notation - do postfix traversal in reverse order
+        # Given prefix notation - do postfix traversal in reverse order
         for cmd in cmd_list[::-1]:
             c_type = cmd['type']
             c_symbol = cmd['symbol']
@@ -458,11 +459,11 @@ class CSG2DCompiler:
                 id = cmd['ID'] + draw_count[c_symbol]
                 canvas = primitive_dict[c_symbol][id]
                 canvas_stack.append(canvas)
-                
+
         output = canvas_stack[0]
         # dnf_form = formula.to_dnf()
         return output
-        
+
     def fast_sub_compile(self, cmd_list, draw_count):
         # TODO: Improve this
         n_prim = 0
@@ -473,42 +474,43 @@ class CSG2DCompiler:
         for draw_type in self.draw_seq:
             draw_start[draw_type] = n_prim
             n_prim += draw_count[draw_type]
-            draw_transforms[draw_type] = th.zeros((draw_count[draw_type], 3, 3), device=self.device)
+            draw_transforms[draw_type] = th.zeros(
+                (draw_count[draw_type], 3, 3), device=self.device)
             # draw_inversions[draw_type] = th.zeros((draw_count[draw_type],), device=self.device, dtype=th.bool)
             # draw_transforms[draw_type] = np.zeros((draw_count[draw_type], 4, 4))
-            draw_inversions[draw_type] = np.zeros((draw_count[draw_type]), dtype=bool)
-            
-        # Pass 1: Construct Draw Transforms, Remove Difference, Apply complements, And produce boolean formula. 
-        draw_transforms, draw_inversions, no_complement_graph = self.reduce_cmd_list_diff(cmd_list, 
-                                            draw_transforms, draw_inversions, n_prim, draw_start)
-        
+            draw_inversions[draw_type] = np.zeros(
+                (draw_count[draw_type]), dtype=bool)
+
+        # Pass 1: Construct Draw Transforms, Remove Difference, Apply complements, And produce boolean formula.
+        draw_transforms, draw_inversions, no_complement_graph = self.reduce_cmd_list_diff(cmd_list,
+                                                                                          draw_transforms, draw_inversions, n_prim, draw_start)
+
         # for draw_type in self.draw_seq:
         #     draw_inversions[draw_type] = th.from_numpy(draw_inversions[draw_type]).to(self.device)
-            
+
         return draw_transforms, draw_inversions, no_complement_graph
-    
-    
+
     def reduce_cmd_list_diff(self, cmd_list, draw_transforms, draw_inversions, n_prim, draw_start):
-        
+
         # Transforms
         transform_stack = [self.transforms.get_affine_identity()]
-        
+
         # Inversion
         inversion_mode = False
         inversion_stack = [inversion_mode]
-        
+
         # Boolean Formula:
         # no_complement_graph = nx.DiGraph()
         # no_complement_graph.add_node(0, label="ROOT", id=0)
         # graph_pointers = [0]
-        
+
         new_cmd_list = []
-        
+
         for ind, cmd in enumerate(cmd_list):
             c_type = cmd['type']
             c_symbol = cmd['symbol']
             inversion_mode = inversion_stack.pop()
-            
+
             if c_type == "B":
                 latest_transform = transform_stack[-1]
                 transform_stack.append(latest_transform)
@@ -518,22 +520,23 @@ class CSG2DCompiler:
                 else:
                     inversion_stack.append(inversion_mode)
                 inversion_stack.append(inversion_mode)
-                
+
                 if inversion_mode:
                     current_symbol = INVERTED_MAP[c_symbol]
                 else:
                     current_symbol = NORMAL_MAP[c_symbol]
                 cmd['symbol'] = current_symbol
                 new_cmd_list.append(cmd)
-                        
+
             elif c_type == "T":
                 latest_transform = transform_stack.pop()
-                new_transform = self.transform_to_execute[c_symbol](param=cmd['param'])
+                new_transform = self.transform_to_execute[c_symbol](
+                    param=cmd['param'])
                 updated_transform = th.matmul(new_transform, latest_transform)
                 transform_stack.append(updated_transform)
                 inversion_stack.append(inversion_mode)
                 # skip append?
-                
+
             elif c_type == "D":
                 # print("creating Draw", command)
                 latest_transform = transform_stack.pop()
@@ -546,9 +549,8 @@ class CSG2DCompiler:
                     draw_inversions[c_symbol][id] = True
                 # add to new_cmd_list
                 new_cmd_list.append(cmd)
-                
+
         # inversion_array = th.from_numpy(inversion_array).to(self.device)
         # inversion_array = inversion_array.unsqueeze(1)
-                
+
         return draw_transforms, draw_inversions, new_cmd_list
-            
