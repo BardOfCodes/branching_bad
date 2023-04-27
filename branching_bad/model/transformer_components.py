@@ -1,5 +1,6 @@
 import os
 import torch
+import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -10,7 +11,7 @@ class AttnLayer(nn.Module):
         self.num_heads = nh
         self.hidden_dim = hd
 
-        self.self_attn = nn.MultiheadAttention(self.hidden_dim, self.num_heads)
+        self.self_attn = nn.MultiheadAttention(self.hidden_dim, self.num_heads, batch_first=True)
 
         self.l1 = nn.Linear(hd, hd)
         self.l2 = nn.Linear(hd, hd)
@@ -23,6 +24,27 @@ class AttnLayer(nn.Module):
         self.n2 = nn.LayerNorm(hd)
 
     def forward(self, src, attn_mask, key_padding_mask):
+
+        # src = src.transpose(0, 1)
+
+        src2 = self.self_attn(
+            src,
+            src,
+            src,
+            attn_mask=attn_mask,
+            key_padding_mask=None,
+            need_weights=False
+        )[0]
+
+        src = src + self.d1(src2)
+        src = self.n1(src)
+        src2 = self.l2(self.d2(F.leaky_relu(self.l1(self.n2(src)), .2)))
+        src = src + self.d2(src2)
+        src = self.n2(src)
+        return src
+
+
+    def forward_old(self, src, attn_mask, key_padding_mask):
 
         src = src.transpose(0, 1)
 
@@ -42,7 +64,6 @@ class AttnLayer(nn.Module):
         src = self.n2(src)
         return src.transpose(0, 1)
 
-
 class LearnablePositionalEncoding(nn.Module):
 
     def __init__(self, d_model, dropout, max_len=256):
@@ -60,7 +81,8 @@ class LearnablePositionalEncoding(nn.Module):
         return self.dropout(x)
     
     def get_singular_position(self, x, position):
-        pe = self.pe[position]
+        position = th.tensor(position).to(x.device)
+        pe = self.pe(position)
         x = x + pe
         return self.dropout(x)
     

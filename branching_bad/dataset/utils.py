@@ -4,7 +4,7 @@ from collections import defaultdict
 
 def val_collate_fn(batch):
     batch = th.stack(batch, dim=0).to("cuda")
-    return batch
+    return batch, None, None, None
 def wrap_format_with_compiler(format_func, compiler):
     
     def inner_func(batch):
@@ -46,6 +46,8 @@ def format_train_data_with_compiler(batch, compiler):
         n_actions.append(val[3])
 
     for draw_type in draw_transforms.keys():
+        if len(collapsed_draws[draw_type]) == 0:
+            continue
         collapsed_inversions[draw_type] = th.from_numpy(np.array(collapsed_inversions[draw_type])).to(compiler.device)
         collapsed_inversions[draw_type] = collapsed_inversions[draw_type].unsqueeze(1)
         collapsed_draws[draw_type] = th.stack(collapsed_draws[draw_type], 0).to(compiler.device)

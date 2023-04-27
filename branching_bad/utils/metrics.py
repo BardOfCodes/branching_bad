@@ -10,6 +10,7 @@ class StatEstimator:
         self.all_scores = []
         self.all_lens = []
         self.all_ious = []
+        self.expressions = []
         
     
     
@@ -21,6 +22,8 @@ class StatEstimator:
     def get_final_metrics(self):
         metrics = dict()
         metrics["score"] = np.mean(self.all_scores)
+        metrics["avg_lengths"] = np.mean(self.all_lens)
+        metrics["IoU"] = np.mean(self.all_ious)
         return metrics
     
     
@@ -55,13 +58,16 @@ class StatEstimator:
         selected_expressions = []
         for i, pred_batch in enumerate(pred_canvases):
             select_scores = all_scores[storage_count[i][0]:storage_count[i][1]]
+            select_iou = iou[storage_count[i][0]:storage_count[i][1]]
             best_id = select_scores.argmax()
             selected_expression = pred_expressions[i][best_id]
             # pred_canvas = pred_canvases[i][best_id]
             self.all_scores.append(select_scores[best_id].item())
+            self.all_ious.append(select_iou[best_id].item())
             self.all_lens.append(len(selected_expression))
-            self.all_ious.append(iou[best_id].item())
             selected_expressions.append(selected_expression)
+            
+        self.expressions.extend(selected_expressions)
             
         return selected_expressions
             

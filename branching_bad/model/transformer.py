@@ -107,36 +107,14 @@ class BaseTransformer(nn.Module):
             nn.init.kaiming_uniform_(m.weight.data)
             if m.bias is not None:
                 nn.init.constant_(m.bias.data, 0)
-        else:
-            print("WUT")
 
-    def enable_beam_mode(self):
-        self.beam_mode = True
-        self.beam_partial_init = True
-
-    def disable_beam_mode(self):
-        self.beam_mode = False
-        self.beam_partial_init = False
-
-    def initialize_weights(self, m):
-        if isinstance(m, nn.Conv2d):
-            nn.init.kaiming_uniform_(m.weight.data, nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias.data, 0)
-        elif isinstance(m, nn.BatchNorm2d):
-            nn.init.constant_(m.weight.data, 1)
-            nn.init.constant_(m.bias.data, 0)
-        elif isinstance(m, nn.Linear):
-            nn.init.kaiming_uniform_(m.weight.data)
-            if m.bias is not None:
-                nn.init.constant_(m.bias.data, 0)
 
     def generate_attn_mask(self):
         sz = self.visual_seq_len + self.out_seq_len
         mask = (th.triu(th.ones(sz, sz)) == 1)
         mask = mask.float().masked_fill(mask == 0, float(
             '-inf')).masked_fill(mask == 1, float(0.0)).T
-        # mask[:self.visual_seq_len, :self.visual_seq_len] = 0.
+        mask[:self.visual_seq_len, :self.visual_seq_len] = 0.
         return mask
 
     def generate_key_mask(self, num, device):
@@ -145,11 +123,6 @@ class BaseTransformer(nn.Module):
         else:
             sz = self.visual_seq_len + self.out_seq_len
             self.key_mask = th.zeros(num, sz).bool().to(device)
-
-    def generate_start_token(self, num, max_action_size, device):
-        if not num == self.start_token.shape[0]:
-            self.start_token = th.LongTensor(
-                [[self.command_tokens.num_embeddings - 1]]).to(device).repeat(num, 1)
 
     def forward_train(self, x_in, actions_in):
 
@@ -206,7 +179,8 @@ class BaseTransformer(nn.Module):
                 1, -1)
             cmd_token_embeddings = self.singular_token_mapper(all_embeddings)
         # new extend the partial seq:
-        new_partial_seq = th.cat((partial_seq.clone(), cmd_token_embeddings), dim=0)
+        cmd_token_embeddings = self.pos_encoding.get_singular_position(cmd_token_embeddings, partial_seq.shape[0:1])
+        new_partial_seq = th.cat((partial_seq, cmd_token_embeddings), dim=0)
         return new_partial_seq
     
 
@@ -225,7 +199,7 @@ class BaseTransformer(nn.Module):
         cmd_vectors_norms = th.norm(cmd_vectors, dim=1)
         cmd_vectors = cmd_vectors / cmd_vectors_norms.unsqueeze(1)
 
-        all_commands = self.command_tokens.weight.detach()
+        all_commands = self.command_tokens.weight# .detach()
         all_commands_norm = th.norm(all_commands, dim=1)
         all_cmd = all_commands / all_commands_norm.unsqueeze(1)
 
@@ -248,9 +222,10 @@ class BaseTransformer(nn.Module):
         total_len = partial_sequence.shape[1]
         
         attn_mask = self.attn_mask[:total_len, :total_len]
+        
         for attn_layer in self.attn_layers:
-            out = attn_layer(partial_sequence, attn_mask, None)
-        seq_out = out[:, -1:, :]
+            partial_sequence = attn_layer(partial_sequence, attn_mask, None)
+        seq_out = partial_sequence[:, -1:, :]
 
         output = self.stack_all_vectors(seq_out)
 
@@ -260,54 +235,6 @@ class BaseTransformer(nn.Module):
         cmd_logsoft, param_logsoft = self.attention_to_cmd_param(output)
         # cmd_distr = th.softmax(cmd_distr, dim = 1)
         return cmd_logsoft, param_logsoft
-
-
-
-    def partial_beam_forward(self, x_in, y_in, y_length):
-        assert not self.x_count is None, "Need to set x_count"
-        if self.beam_partial_init:
-            self.beam_partial_init = False
-            self.cnn_features = self.cnn_extractor.forward(x_in).detach()
-
-        # Replicate the cnn_features to get
-        cnn_features = []
-        for ind, count in enumerate(self.x_count):
-            cnn_features.append(
-                self.cnn_features[ind:ind+1].detach().expand(count, -1, -1))
-
-        cnn_features = th.cat(cnn_features, 0)
-
-        batch_size = y_in.shape[0]
-        # Cut size:
-        current_seq_len = y_length[0]
-
-        self.generate_start_token(batch_size, y_in.device)
-        y_in = th.cat([self.start_token, y_in], 1)
-        y_in = y_in[:, :current_seq_len: -1]
-
-        token_embeddings = self.token_embedding(y_in)
-
-        out = self.pos_encoding(
-            th.cat((cnn_features, token_embeddings), dim=1))
-
-        # self.generate_key_mask(batch_size, y_in.device)
-        # Cut size:
-        total_len = self.visual_seq_len + (current_seq_len) + 1
-        attn_mask = self.attn_mask[:total_len, :total_len]
-        # key_mask = self.key_mask[:, :total_len].detach()
-        for attn_layer in self.attn_layers:
-            out = attn_layer(out, attn_mask, None)
-        seq_out = out[:, self.visual_seq_len:, :]
-
-        if self.return_all:
-            raise ValueError("Cant use Return all with this mode")
-        else:
-            output = seq_out[:, -1]
-
-        if len(output.shape) == 3:
-            output = output.squeeze(1)
-        output = self.attn_to_output(output)
-        return output
 
     def vector_gather(self, vectors, indices):
         """
@@ -343,3 +270,159 @@ class BaseTransformer(nn.Module):
     def stack_all_vectors(self, vectors):
         output = vectors.reshape(-1, vectors.shape[-1])
         return output
+
+@ModelRegistry.register("NestedTransformer")
+class NestedTransformer(BaseTransformer):
+    
+    
+    def __init__(self, config):
+        super(NestedTransformer, self).__init__(config)
+        # Parameters:
+        # Remove the param predictor
+        # del self.param_predictor
+        self.n_params = config.N_PARAMS
+        self.param_seq_length = self.n_params + 1
+        self.param_attn_layers = nn.ModuleList([AttnLayer(
+            self.num_heads, self.attn_size, self.dropout) for _ in range(self.num_dec_layers)])
+        param_attn_mask = self.generate_param_attn_mask()
+        
+        self.param_pos_encoding = LearnablePositionalEncoding(
+            self.attn_size, self.dropout, max_len=self.param_seq_length)
+        
+        self.cmd_to_param_start = SEQ_MLP([self.attn_size, self.attn_size, self.attn_size], self.dropout)
+        
+        self.register_buffer("param_attn_mask", param_attn_mask)
+        self.apply(self.initialize_weights)
+
+    def initialize_weights(self, m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.kaiming_uniform_(m.weight.data, nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias.data, 0)
+        elif isinstance(m, nn.BatchNorm2d):
+            nn.init.constant_(m.weight.data, 1)
+            nn.init.constant_(m.bias.data, 0)
+        elif isinstance(m, nn.Linear):
+            nn.init.kaiming_uniform_(m.weight.data)
+            if m.bias is not None:
+                nn.init.constant_(m.bias.data, 0)
+
+    def generate_param_attn_mask(self):
+        sz = self.param_seq_length 
+        mask = (th.triu(th.ones(sz, sz)) == 1)
+        mask = mask.float().masked_fill(mask == 0, float(
+            '-inf')).masked_fill(mask == 1, float(0.0)).T
+        # mask[:self.visual_seq_len, :self.visual_seq_len] = 0.
+        return mask
+
+    def forward_train(self, x_in, actions_in):
+
+        token_embeddings, all_param_embeddings = self.embed_action_sequence(actions_in)
+        
+        # for normal sequence:
+        cnn_features = self.cnn_extractor.forward(x_in)
+        out = self.pos_encoding(th.cat((cnn_features, token_embeddings), dim=1))
+
+        for attn_layer in self.attn_layers:
+            out = attn_layer(out, self.attn_mask, self.key_mask)
+        seq_out = out[:, self.visual_seq_len-1:-1, :]
+
+        output = self.stack_all_vectors(seq_out)
+
+        if len(output.shape) == 3:
+            output = output.squeeze(1)
+
+        cmd_logsoft = self.attention_to_cmd_param(output)
+        
+        # For param prediction attention: 
+        
+        batch_size, max_action_size, _ = actions_in.size()
+        
+        all_param_embeddings = all_param_embeddings.reshape(
+            -1, self.param_seq_length, self.attn_size)
+        in_token = self.cmd_to_param_start(output.unsqueeze(1))
+        all_param_embeddings = th.cat([in_token, all_param_embeddings[:, 1:, :]], 1)
+        param_out = self.param_pos_encoding(all_param_embeddings)
+        # all_param_embeddings = all_param_embeddings.reshape(
+        #     batch_size, max_action_size, self.param_seq_length + self.visual_seq_len, self.attn_size)
+        # param_out = all_param_embeddings.reshape(-1, self.param_seq_length, self.attn_size)
+        for attn_layer in self.param_attn_layers:
+            param_out = attn_layer(param_out, self.param_attn_mask, self.key_mask)
+        
+        param_out = param_out.reshape(batch_size, max_action_size, self.param_seq_length, self.attn_size)
+        param_out = param_out[:, :, :-1, :]
+        # param_out = param_out.reshape(-1, self.attn_size)
+        
+        param_output = self.param_predictor(param_out)
+        param_output = param_output.reshape(-1, self.n_params,
+                                            self.param_scale_tokens.num_embeddings)
+        param_logsoft = self.param_logsoft(param_output)
+        # cmd_distr = th.softmax(cmd_distr, dim = 1)
+        return cmd_logsoft, param_logsoft
+
+    def embed_action_sequence(self, actions_in):
+        
+        batch_size, max_action_size, _ = actions_in.size()
+
+        cmd_in = actions_in[:, :, 0:1]
+
+        cmd_token_embeddings = self.command_tokens(cmd_in)
+
+        param_in = actions_in[:, :, 1:-1]
+        param_token_embeddings = self.param_scale_tokens(param_in)
+
+        all_param_embeddings = th.cat(
+            (cmd_token_embeddings, param_token_embeddings), dim=2)
+        # add location information:
+        embd_for_mapping = all_param_embeddings.reshape(
+            batch_size, max_action_size, -1)
+
+        token_embeddings = self.singular_token_mapper(embd_for_mapping)
+        action_type = actions_in[:, :, -1:].bool()
+        action_type = action_type.expand(-1, -1, self.attn_size)
+        token_embeddings = th.where(
+            action_type, token_embeddings, cmd_token_embeddings[:, :, 0, :])
+        
+        return token_embeddings, all_param_embeddings
+
+    def extend_seq(self, partial_seq, cmd_in, param_in=None):
+        
+        cmd_token_embeddings = self.command_tokens(cmd_in)
+        cmd_token_embeddings.unsqueeze_(0)
+        if not param_in is None:
+            param_token_embeddings = self.param_scale_tokens(param_in)
+            all_embeddings = th.cat(
+                (cmd_token_embeddings, param_token_embeddings), dim=0)
+            all_embeddings = all_embeddings.reshape(
+                1, -1)
+            cmd_token_embeddings = self.singular_token_mapper(all_embeddings)
+        # new extend the partial seq:
+        # add position:
+        self.pos_encoding.get_singular_position(cmd_token_embeddings, partial_seq.shape[1])
+        new_partial_seq = th.cat((partial_seq.clone(), cmd_token_embeddings), dim=0)
+        return new_partial_seq
+    
+    def attention_to_cmd_param(self, output):
+        
+        output = self.after_attn_process(output)
+
+        cmd_vectors = self.cmd_vector(output)
+        # Convert into distribution over the command tokens
+        cmd_vectors_norms = th.norm(cmd_vectors, dim=1)
+        cmd_vectors = cmd_vectors / cmd_vectors_norms.unsqueeze(1)
+
+        all_commands = self.command_tokens.weight.detach()
+        all_commands_norm = th.norm(all_commands, dim=1)
+        all_cmd = all_commands / all_commands_norm.unsqueeze(1)
+
+        cmd_sim = th.einsum("bk, mk -> bm", cmd_vectors, all_cmd)
+        # cmd_distr = th.softmax(cmd_distr, dim = 1)
+        # this becomes based on param seq.
+        cmd_sim = 5 * cmd_sim
+        cmd_logsoft = self.cmd_logsoft(cmd_sim)
+        return cmd_logsoft
+    
+    
+    def forward_beam(self, partial_sequence):
+        raise NotImplementedError
+

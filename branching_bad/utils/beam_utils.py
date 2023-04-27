@@ -1,6 +1,8 @@
 import torch as th
 import numpy as np
 from collections import defaultdict
+
+
 def batch_beam_decode(model, canvas, state_machine_class, beam_size=10):
     
     device = th.device('cuda')
@@ -24,10 +26,11 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10):
     partial_sequences = model.get_init_sequence(canvas)
     while(partial_sequences.shape[0] > 0):
         # perform forward for all partial sequences. 
-        output_cmd, output_param = model.forward_beam(partial_sequences)
-        output_cmd = th.exp(output_cmd)
-        output_param = th.exp(output_param)
-
+        output_cmd_logsf, output_param_logsf = model.forward_beam(partial_sequences)
+        output_cmd = th.exp(output_cmd_logsf)
+        output_param = th.exp(output_param_logsf)
+        
+        # cmd_entropy = th.sum(-output_cmd * output_cmd_logsf, dim=1)
         # get the top k predictions for each sequence.
         # apply mask on actions
         mask_array = state_machine.get_state_mask()
@@ -65,6 +68,11 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10):
         ax_a = (final_param_top_k // beam_size) 
         ax_b = final_param_top_k  % beam_size
         final_draw_options = th.stack([ax_a, ax_b], dim=2)
+        
+        # HACK:
+        # final_param_probs = th.gather(draw_command_probs, dim=1, index=ax_a)
+        # OR adjust be size:
+        final_param_probs = th.exp(th.log(final_param_probs) / 6.0)
         
         # Now gather the top k for each batch id
         # if any seq is finished, add it to "complete programs".
@@ -112,7 +120,7 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10):
                 prev_logprob = beam_entry_to_logprobability[beam_ind]
                 if prob == 0:
                     continue
-                prev_partial_seq = partial_sequences[beam_ind]
+                prev_partial_seq = partial_sequences[beam_ind].clone()
                 prev_bool_count = bool_count[beam_ind]
                 prev_canvas_count = canvas_count[beam_ind]
                 cur_partial_actions = partial_action_seqs[beam_ind]

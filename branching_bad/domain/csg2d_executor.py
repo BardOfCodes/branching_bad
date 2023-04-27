@@ -61,6 +61,8 @@ class CSG2DExecutor:
                     draw_inversions[draw_type])
 
         for draw_type in draw_transforms.keys():
+            if len(collapsed_draws[draw_type]) == 0:
+                continue
             collapsed_inversions[draw_type] = th.from_numpy(
                 np.array(collapsed_inversions[draw_type])).to(self.compiler.device)
             collapsed_inversions[draw_type] = collapsed_inversions[draw_type].unsqueeze(

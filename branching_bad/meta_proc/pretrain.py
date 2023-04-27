@@ -54,7 +54,7 @@ class Pretrain():
         
         self.state_machine_class = getattr(SM, config.DOMAIN.STATE_MACHINE_CLASS)
         
-        self.best_score = 0
+        self.best_score = -np.inf
 
     def start_experiment(self,):
         # Create the dataloaders:
@@ -65,12 +65,11 @@ class Pretrain():
                                                 num_workers=dl_specs.TRAIN_WORKERS, shuffle=False, collate_fn=collator,
                                                 persistent_workers=dl_specs.TRAIN_WORKERS > 0)
 
-        val_loader = th.utils.data.DataLoader(self.val_dataset, batch_size=dl_specs.BATCH_SIZE, pin_memory=False,
+        val_loader = th.utils.data.DataLoader(self.val_dataset, batch_size=dl_specs.VAL_BATCH_SIZE, pin_memory=False,
                                               num_workers=dl_specs.VAL_WORKERS, shuffle=False,
                                               persistent_workers=dl_specs.VAL_WORKERS > 0, collate_fn=val_collate_fn)
         # shift model:
         self.model = self.model.cuda()
-
         # Train model on the dataset
         for epoch in range(self.start_epoch, self.end_epoch):
             for iter_ind, (canvas, actions, action_validity, n_actions) in enumerate(train_loader):
@@ -86,16 +85,12 @@ class Pretrain():
                 if iter_ind % self.log_interval == 0:
                     self.log_statistics(
                         output, actions, action_validity, n_actions, loss_statistics, epoch, iter_ind)
-            # TEMPORARY
-            st = time.time()
             self._evaluate(epoch, val_loader)
-            et = time.time()
-            print(f"eval time: {et-st}")
             # Save model checkpoint?
             if epoch % self.save_freq == 0:
                 self._save_model(epoch)
 
-    def _save_model(self, epoch, prefix="best"):
+    def _save_model(self, epoch, prefix="pretrain"):
         Path(self.save_dir).mkdir(parents=True, exist_ok=True)
         save_obj = {
             "model": self.model.state_dict(),
@@ -103,14 +98,15 @@ class Pretrain():
             "epoch": epoch,
             "score": self.best_score
         }
-        cPickle.dump(save_obj, open(os.path.join(self.save_dir, f"{prefix}_model.pt"), "wb"))
-        # th.save(self.model.state_dict(), os.path.join(
-        #     self.save_dir, f"pretrain_{prefix}.pt"))
+        file_path = os.path.join(self.save_dir, f"{prefix}_model.pt")
+        print(f"saving model at epoch {epoch} at {file_path}")
+        cPickle.dump(save_obj, open(file_path, "wb"))
 
     def _calculate_loss(self, output, actions, action_validity):
         # calculate loss
         # return loss, loss_statistics
         cmd_logsf, param_logsf = output
+        
         param_logsf = param_logsf.swapaxes(1, 2)
         
         cmd_distr_target = actions[:, :, 0]
@@ -121,18 +117,28 @@ class Pretrain():
         cmd_loss = th.where(cmd_validity, cmd_loss, 0)
         cmd_loss = th.sum(cmd_loss)/th.sum(cmd_validity)
         
+        cmd_p = th.exp(cmd_logsf)
+        cmd_entropy = th.sum(-cmd_p * cmd_logsf, dim=-1).sum()/th.sum(cmd_validity)
+        
         param_distr_target = actions[:, :, 1:-1]
         param_distr_target = param_distr_target.reshape(-1, self.num_commands - 1)
         param_validity = action_validity[:, 1:-1]
         param_loss = self.param_nllloss(param_logsf, param_distr_target)
         param_loss = th.where(param_validity, param_loss, 0)
-        param_loss = th.sum(param_loss)/th.sum(param_validity)
+        # param_loss = th.sum(param_loss, 1)
+        param_loss = th.sum(param_loss) / th.sum(param_validity) * 5
+        param_p = th.exp(param_logsf)
+        param_entropy = th.sum(-param_p * param_logsf, dim=-1).sum()/th.sum(param_validity)
         
+        
+        # total_loss = th.sum(cmd_loss + param_loss)/ (th.sum(cmd_validity) + th.sum(param_validity)/5)
         total_loss = cmd_loss + param_loss
         stat_obj = {
             "cmd_obj": cmd_loss,
             "param_obj": param_loss,
-            "total_obj": total_loss
+            "total_obj": total_loss,
+            "cmd_entropy": cmd_entropy,
+            "param_entropy": param_entropy,
         }
 
         return total_loss, stat_obj
@@ -168,7 +174,9 @@ class Pretrain():
         loss_statistics = {
             "cmd_loss": th.mean(loss_obj["cmd_obj"]).item(),
             "param_loss": th.mean(loss_obj["param_obj"]).item(),
-            "total_loss": loss_obj["total_obj"].item()
+            "total_loss": loss_obj["total_obj"].item(),
+            "cmd_entropy": loss_obj["cmd_entropy"].item(),
+            "param_entropy": loss_obj["param_entropy"].item(),
         }
         all_stats.update(loss_statistics)
 
@@ -180,13 +188,15 @@ class Pretrain():
         ...
         # Max Batch size will be BS * Beam Size ^ 2
 
+        # TEMPORARY
+        st = time.time()
         stat_estimator = StatEstimator()
         
         # Validation
         self.model = self.model.eval()
         nn_interpreter = self.train_dataset.model_translator
         executor = self.train_dataset.executor
-        for iter_ind, canvas in enumerate(val_loader):
+        for iter_ind, (canvas, _, _, _) in enumerate(val_loader):
             # model forward:
             with th.no_grad():
                 pred_actions = batch_beam_decode(self.model, canvas, self.state_machine_class)
@@ -197,10 +207,17 @@ class Pretrain():
                 # select best for each based on recon. metric
                 # push batch of canvas to stat_estimator
             stat_estimator.eval_batch_execute(pred_canvases, pred_expressions, canvas)
+            
         final_metrics = stat_estimator.get_final_metrics()
-        log_iter = epoch * self.epoch_iters
-        self.logger.log_statistics(final_metrics, log_iter, prefix="val")
         final_score = final_metrics["score"]
         if final_score >= self.best_score:
             self.best_score = final_score
             self._save_model(epoch, "best")
+        et = time.time()
+        final_metrics["best_score"] = self.best_score
+        final_metrics['time'] = et - st
+        final_metrics['epoch'] = epoch
+        log_iter = epoch * self.epoch_iters
+        self.logger.log_statistics(final_metrics, log_iter, prefix="val")
+
+        self.model = self.model.train()

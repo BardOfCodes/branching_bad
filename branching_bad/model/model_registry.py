@@ -1,3 +1,4 @@
+import _pickle as cPickle
 class ModelRegistry:
     _registry = {}
 
@@ -13,4 +14,8 @@ class ModelRegistry:
     def create_model(cls, config):
         model_class = cls._registry[config.NAME]
         model = model_class(config)
+        if config.LOAD_WEIGHTS is not None:
+            save_info = cPickle.load(open(config.LOAD_WEIGHTS, "rb"))
+            weights = save_info["model"]
+            model.load_state_dict(weights)
         return model

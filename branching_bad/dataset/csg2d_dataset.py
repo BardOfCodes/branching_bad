@@ -40,6 +40,7 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
         self.model_translator = GenNNInterpreter(config.NN_INTERPRETER)
         self.epoch_size = config.EPOCH_SIZE
         self.max_actions = config.MAX_ACTIONS
+        self.subset = subset
         self.action_validity = np.zeros((self.max_actions, 7), dtype=bool)
         
         self.bake_file = config.BAKE_FILE
@@ -49,13 +50,14 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
             expressions = self.get_expressions(config, subset)
             self.expressions = expressions
             cache = self.bake_dataset()
-            self.cache = {i:cache[i] for i in range(len(cache))}
         else:
             cache = cPickle.load(open(self.bake_file, "rb"))
-            if subset == "train":
-                random.shuffle(cache)
-            self.cache = {i:cache[i] for i in range(len(cache))}
-            self.expressions = [x[-1] for x in cache]
+            cache = cache[:self.epoch_size]
+        if subset == "train":
+            random.shuffle(cache)
+        self.cache_size = len(cache)
+        self.cache = {i:cache[i] for i in range(self.cache_size)}
+        self.expressions = [x[-1] for x in cache]
 
     def get_expressions(self, config, subset):
         
@@ -93,12 +95,14 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
         print("Done baking dataset.")
         
         cPickle.dump(cache_obj, open(self.bake_file, "wb"))
+        return cache_obj
         
     def __len__(self):
         return self.epoch_size
 
     def __getitem__(self, index):
         
+        index = index % self.cache_size
         if index in self.cache.keys():
             expr_obj, actions, action_validity, n_actions, _ = self.cache[index]
         else:
@@ -112,6 +116,14 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
         self.executor.set_device(self.device)
         for i in range(self.epoch_size):
             yield self[i]
+        self.reset()
+    
+    def reset(self):
+        if self.subset == "train":
+            cache = list(self.cache.values())
+            random.shuffle(cache)
+        self.cache = {i:cache[i] for i in range(self.cache_size)}
+        self.expressions = [x[-1] for x in cache]
 
     def make_item(self, index):
         
