@@ -6,7 +6,7 @@ from configs.ablations.pretrain import PretrainConfFactory
 
 class PLADConfFactory(CNF):
 
-    def __init__(self, name="PLADBase", machine="local"):
+    def __init__(self, name="PLADNew", machine="local"):
 
         # pretrain config
         config = PretrainConfFactory(name, machine).config
@@ -15,7 +15,7 @@ class PLADConfFactory(CNF):
         config.PLAD.INNER_PATIENCE = 3
         config.PLAD.OUTER_PATIENCE = 3
         config.PLAD.MAX_INNER_ITER = 6
-        config.PLAD.SCORE_TOLERANCE = 0.01
+        config.PLAD.SCORE_TOLERANCE = 1e-2
 
         config.TRAIN.DATASET.NAME = "CADCSG2DDataset"
         config.TRAIN.DATASET.LOAD_EXTRA = True
@@ -31,6 +31,6 @@ class PLADConfFactory(CNF):
         # change train dataset as well:
 
         config.DATA_LOADER.TRAIN_WORKERS = 4
-        config.DATA_LOADER.VAL_WORKERS = 2
+        config.DATA_LOADER.VAL_WORKERS = 0
 
         self.config = config
