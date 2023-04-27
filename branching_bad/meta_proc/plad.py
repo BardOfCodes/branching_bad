@@ -35,8 +35,8 @@ class PLAD(Pretrain):
                                               num_workers=dl_specs.VAL_WORKERS, shuffle=False,
                                               persistent_workers=dl_specs.VAL_WORKERS > 0, collate_fn=val_collate_fn)
         original_train_loader = th.utils.data.DataLoader(self.train_dataset, batch_size=dl_specs.SEARCH_BATCH_SIZE, pin_memory=False,
-                                                         num_workers=0, shuffle=False, collate_fn=val_collate_fn,
-                                                         persistent_workers=False)
+                                                         num_workers=dl_specs.VAL_WORKERS, shuffle=False, collate_fn=val_collate_fn,
+                                                         persistent_workers=dl_specs.VAL_WORKERS > 0)
         outer_loop_saturation = False
         outer_iter = 0
         epoch = 0
@@ -52,11 +52,17 @@ class PLAD(Pretrain):
             train_loader = th.utils.data.DataLoader(training_dataset, batch_size=dl_specs.TRAIN_BATCH_SIZE // 2, pin_memory=False,
                                                     num_workers=dl_specs.TRAIN_WORKERS, shuffle=False, collate_fn=collator,
                                                     persistent_workers=dl_specs.TRAIN_WORKERS > 0)
-            self.inner_loop(outer_iter, epoch, train_loader, val_loader)
+            previous_best = self.best_score
+            epoch, _ = self.inner_loop(outer_iter, epoch, train_loader, val_loader)
+            new_best = self.best_score
+            print("Inner loop increased score from {} to {}".format(
+                previous_best, new_best))
             # outer saturation check:
             if outer_iter - self.best_outer_iter >= self.outer_patience:
                 print("Reached outer saturation.")
                 outer_loop_saturation = True
+            else:
+                print("Outer loop not saturated yet.")
 
             outer_iter += 1
         predicted_expressions = training_dataset.predicted_expressions
@@ -88,6 +94,7 @@ class PLAD(Pretrain):
             # inner saturation check:
             final_score = final_metrics["score"]
             if final_score > self.best_score + self.score_tolerance:
+                print("New best score: ", final_score)
                 self.best_score = final_score
                 self.best_epoch = epoch
                 self.best_outer_iter = outer_iter
@@ -101,6 +108,7 @@ class PLAD(Pretrain):
             if epoch % self.save_freq == 0:
                 self._save_model(epoch)
             epoch += 1
+        return epoch, final_metrics
 
     def generate_training_dataset(self, epoch, original_train_loader):
 
@@ -109,8 +117,6 @@ class PLAD(Pretrain):
         stat_estimator = self._evaluate(
             epoch, original_train_loader, prefix="search")
         # Now from expressions and corresponding canvases create the new dataset:
-        # cPickle.dump(stat_estimator, open("tmp.pkl", "wb"))
-        # stat_estimator = cPickle.load(open("tmp.pkl", "rb"))
 
         training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
                                                        device=self.train_dataset.device,

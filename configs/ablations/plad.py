@@ -30,7 +30,7 @@ class PLADConfFactory(CNF):
         config.DATA_LOADER.VAL_BATCH_SIZE = 512
         # change train dataset as well:
 
-        config.DATA_LOADER.TRAIN_WORKERS = 0
-        config.DATA_LOADER.VAL_WORKERS = 0
+        config.DATA_LOADER.TRAIN_WORKERS = 4
+        config.DATA_LOADER.VAL_WORKERS = 2
 
         self.config = config

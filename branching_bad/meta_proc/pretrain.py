@@ -196,10 +196,10 @@ class Pretrain():
             "Weights L2": loss_obj["l2_norm"].item(),
             "total_loss": loss_obj["total_obj"].item(),
         }
-        all_stats.update(loss_statistics)
-
         log_iter = epoch * self.epoch_iters + iter_ind
-        self.logger.log_statistics(all_stats, log_iter, prefix="train")
+        self.logger.log_statistics(all_stats, log_iter, prefix="train-stats")
+        self.logger.log_statistics(
+            loss_statistics, log_iter, prefix="loss-stats")
 
     def _evaluate(self, epoch, val_loader, log=True, prefix="val"):
         ...
@@ -228,11 +228,14 @@ class Pretrain():
 
         et = time.time()
         final_metrics = stat_estimator.get_final_metrics()
-        final_metrics["best_score"] = self.best_score
-        final_metrics['time'] = et - st
-        final_metrics["inner_iter"] = epoch
+        stats = {
+            'inner_iter': epoch,
+            'time': et - st,
+            'best_score': self.best_score,
+        }
+        stats.update(final_metrics)
         log_iter = epoch * self.epoch_iters
         if log:
-            self.logger.log_statistics(final_metrics, log_iter, prefix=prefix)
+            self.logger.log_statistics(stats, log_iter, prefix=prefix)
 
         return stat_estimator
