@@ -6,6 +6,7 @@ from procXD import SketchBuilder
 from branching_bad.utils.arg_parser import arg_parser
 from branching_bad.utils.notification_utils import SlackNotifier
 import branching_bad.meta_proc as meta_factory
+from pathlib import Path
 
 
 def main():
@@ -22,9 +23,10 @@ def main():
     G = config.to_graph()
     save_file = os.path.join(config.LOGGER.LOG_DIR, "config.excalidraw")
     sys.path.insert(0, config.SIRI_PATH)
-    sketch_builder = SketchBuilder(save_path=save_file)
+    sketch_builder = SketchBuilder()
     sketch_builder.render_stack_sketch(G, stacking="vertical")
-    sketch_builder.export_to_file()
+    Path(save_file).mkdir(parents=True, exist_ok=True)
+    sketch_builder.export_to_file(save_path=save_file)
     del sketch_builder
 
     experiment_proc = getattr(meta_factory, config.EXPERIMENT_MODE)

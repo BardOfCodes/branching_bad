@@ -1,5 +1,11 @@
 # To try
 
+* normal
+
+```bash
+python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name Base --cfg.NOTIFICATION.ENABLE True
+```
+
 * Low Length Tax
 
 ```bash
@@ -15,13 +21,13 @@ python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machin
 * MACRO PER ERA 1
 
 ```bash
-python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name SingleMacro --cfg.ABSTRACTION.CS_SPLICER.MACRO_PER_ERA 1 --cfg.NOTIFICATION.ENABLE True
+python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name SingleMacro --cfg.ABSTRACTION.CS_SPLICER.MACRO_PER_ERA 1 --cfg.ABSTRACTION.CS_SPLICER.MAX_NEW_PERCENTAGE 1.0 --cfg.NOTIFICATION.ENABLE True
 ```
 
 * MAX_NEW_PERCENT = 1.0
   
 ```bash
-python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name SingleMacro --cfg.ABSTRACTION.CS_SPLICER.MAX_NEW_PERCENTAGE 1.0 --cfg.NOTIFICATION.ENABLE True
+python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name MaxIncrease --cfg.ABSTRACTION.CS_SPLICER.MAX_NEW_PERCENTAGE 1.0 --cfg.NOTIFICATION.ENABLE True
 ```
 
 * Transformer Reload  Longer epoch

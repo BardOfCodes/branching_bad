@@ -24,7 +24,7 @@ class Logger:
                 cur_entries = [entries[0][i * SIZE_LIMIT: (i + 1) * SIZE_LIMIT]]
                 cur_headers = headers[i * SIZE_LIMIT: (i + 1) * SIZE_LIMIT]
                 if i != 0:
-                    cur_entries[0].insert(0, entries[0][0:1])
+                    cur_entries[0].insert(0, entries[0][0])
                     cur_headers = headers[0:1] + cur_headers
                 print(tabulate(cur_entries, headers=cur_headers, tablefmt='grid', floatfmt=".3f"))
         else:
