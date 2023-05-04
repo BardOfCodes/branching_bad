@@ -13,6 +13,16 @@ from CSG.bc_trainers.rewrite_engines.subexpr_cache import MergeSplicerCache
 
 MAX_SIZE = int(100000)
 
+class ModGraphicalMCSG2DCompiler(GraphicalMCSG2DCompiler):
+    
+    def cmd_to_expression(self, commands):
+        expression_list = []
+        for cmd in commands:
+            if 'true_expression' in cmd.keys():
+                expression = cmd['true_expression']
+                expression_list.append(expression)
+        return expression_list
+        
 
 class BootADSplicer(MergeSplicerCache):
 
@@ -68,7 +78,7 @@ class BootADSplicer(MergeSplicerCache):
         # Replace with temp_env.parser
         # base_parser = temp_env.program_generator.parser
         base_parser = executor.parser
-        graph_compiler = GraphicalMCSG2DCompiler(resolution=temp_env.program_generator.compiler.resolution,
+        graph_compiler = ModGraphicalMCSG2DCompiler(resolution=temp_env.program_generator.compiler.resolution,
                                                  scale=temp_env.program_generator.compiler.scale,
                                                  draw_mode=temp_env.program_generator.compiler.draw.mode)
 
@@ -337,7 +347,7 @@ class BootADSplicer(MergeSplicerCache):
         # Replace with temp_env.parser
         # base_parser = temp_env.program_generator.parser
         base_parser = executor.parser
-        graph_compiler = GraphicalMCSG2DCompiler(resolution=temp_env.program_generator.compiler.resolution,
+        graph_compiler = ModGraphicalMCSG2DCompiler(resolution=temp_env.program_generator.compiler.resolution,
                                                  scale=temp_env.program_generator.compiler.scale,
                                                  draw_mode=temp_env.program_generator.compiler.draw.mode)
 

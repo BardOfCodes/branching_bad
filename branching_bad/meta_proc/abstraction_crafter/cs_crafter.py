@@ -25,7 +25,7 @@ class CSCrafter():
         device = th.device("cuda")
         arg_list = ["--config", self.config_file,]
         # create the rewriter
-        if config.MACHINE == "CCV":
+        if bbad_config.MACHINE == "CCV":
             arg_list.extend(["--machine", "CCV"])
             
         args = arg_parser.parse_args(arg_list)
