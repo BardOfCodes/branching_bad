@@ -38,6 +38,8 @@ class NaiveBootConfFactory(CNF):
         
         config.OBJECTIVE.NOVEL_CMD_WEIGHT = 5
         
+        config.MODEL.RELOAD_ON_DSL_UPDATE = False
+        
         config.PLAD.DATASET.NAME = "MacroDataset"
         
         

@@ -95,6 +95,7 @@ class BaseTransformer(nn.Module):
         self.cmd_mlp = config.CMD_MLP
         self.param_mlp = config.PARAM_MLP
         self.cmd_logsf_scaler = config.CMD_LOGSF_SCALER
+        self.reload_on_dsl_update = config.RELOAD_ON_DSL_UPDATE
 
     def initialize_weights(self, m):
         if isinstance(m, nn.Conv2d):
@@ -194,15 +195,16 @@ class BaseTransformer(nn.Module):
         prev_n_cmds = self.command_tokens.num_embeddings
         new_command_tokens.weight[:prev_n_cmds].data = self.command_tokens.weight.detach().data
         # also reset the cmd predictor?
-        # for param in self.cmd_vector.layers:
-        #     print(type(param))
-        #     self.initialize_weights(param)
-        # for param in self.after_attn_process.layers:
-        #     print(type(param))
-        #     self.initialize_weights(param)
-        # for param in self.param_predictor.layers:
-        #     print(type(param))
-        #     self.initialize_weights(param)
+        if self.reload_on_dsl_update:
+            for param in self.cmd_vector.layers:
+                print(type(param))
+                self.initialize_weights(param)
+            for param in self.after_attn_process.layers:
+                print(type(param))
+                self.initialize_weights(param)
+            for param in self.param_predictor.layers:
+                print(type(param))
+                self.initialize_weights(param)
         
         self.command_tokens = new_command_tokens
         

@@ -50,7 +50,7 @@ class BootADSplicer(MergeSplicerCache):
         
         # generate extra samples for each expression.
         # OPTION 1: Try to splice the new macros into other expressions.
-        n_new_required = total_required_expressions - len(merge_spliced_expression_bank)
+        n_new_required = total_required_expressions
         # Option 2: Brute force macro through all possible positions.
         additional_expressions = self.brute_force_macro_use(best_program_dict, new_macros, temp_env, executor, n_new_required=n_new_required)
         
@@ -134,12 +134,12 @@ class BootADSplicer(MergeSplicerCache):
                         counter += 1
             # New compute the new expressions?
             if new_expressions:
-                new_expr_len = [len(x) for x in new_expressions]
+                # new_expr_len = [len(x) for x in new_expressions]
                 # print("max new expression length", max(new_expr_len))
-                old_lens = [len(x['expression']) for x in values]
+                # old_lens = [len(x['expression']) for x in values]
                 # print("previous expression length", max(old_lens))
-                if max(new_expr_len) > max(old_lens):
-                    print("WT?")
+                # if max(new_expr_len) > max(old_lens):
+                #     print("WT?")
                 
                 previous_reward = cur_value['reward']
                 slot_id = cur_value['slot_id']
@@ -169,6 +169,7 @@ class BootADSplicer(MergeSplicerCache):
                         score_deltas.append(score_delta)
                         add_counter += 1
             if add_counter > n_new_required:
+                print(f"Added {add_counter} new expressions. Stoping search")
                 break
                 
         et = time.time()
@@ -188,9 +189,9 @@ class BootADSplicer(MergeSplicerCache):
             slot_id = cmd_obj[0]
             target_id = cmd_obj[1]
             new_cmd_list = cmd_obj[2]
-            old_cmd_list = cmd_obj[3]
+            # old_cmd_list = cmd_obj[3]
             old_score = cmd_obj[4]
-            old_expression = cmd_obj[5]
+            # old_expression = cmd_obj[5]
             # get targe:
             target_np, _ = temp_env.program_generator.get_executed_program(
                 slot_id, target_id)
@@ -213,8 +214,8 @@ class BootADSplicer(MergeSplicerCache):
                             score=new_score, iou=new_iou, target_index=target_id)
             # print("previous expression length", len(old_expression))
             # print("New expression length", len(expression))
-            if len(expression) > len(old_expression):
-                print("WT?")
+            # if len(expression) > len(old_expression):
+            #     print("WT?")
             expression_bank.append(expr_obj)
             # note delta in performance
             deltas.append(new_score - old_score)
@@ -256,7 +257,6 @@ class BootADSplicer(MergeSplicerCache):
         lims_shifted[1:] = lims[:-1]
 
         all_indexes = set(list(range(merge_nb)))
-        selected_subexprs = []
 
         # Which abstractions to make?
         # mark the conversions by the delta in reward.
@@ -317,10 +317,10 @@ class BootADSplicer(MergeSplicerCache):
                         old_canonical_commands)
                     new_command_list = cmd_list[:cmd_start] + \
                         new_transform_chaim + cmd_list[cmd_end:]
-                    # merge_spliced_commands.append([expr['slot_id'], expr['target_id'],
-                    #                                new_command_list, cmd_list, old_reward])
                     merge_spliced_commands.append([expr['slot_id'], expr['target_id'],
-                                                   new_command_list, cmd_list, old_reward, expr['expression']])
+                                                   new_command_list, old_reward])
+                    # merge_spliced_commands.append([expr['slot_id'], expr['target_id'],
+                    #                                new_command_list, cmd_list, old_reward, expr['expression']])
                 else:
                     print("WUT")
             new_macros.append(new_macro)

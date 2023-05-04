@@ -64,11 +64,12 @@ class NaiveBOOTAD(PLAD):
                     new_expression_bank, expression_bank)
                 # Update all
                 # Measure number of expr with a macro in them:
-                self.print_novel_cmds(expression_bank)
+                self.log_dsl_details(expression_bank)
 
                 self.update_all_components(new_macros)
                 new_dsl_score = self.get_dsl_scores(expression_bank)
-
+                
+                
                 print("Abstraction Crafting step increased score from {} to {}".format(
                     original_dsl_score, new_dsl_score))
             else:
@@ -103,7 +104,7 @@ class NaiveBOOTAD(PLAD):
         dsl_specs = self.get_dsl_specs()
         return dsl_specs
 
-    def print_novel_cmds(self, expression_bank):
+    def log_dsl_details(self, expression_bank):
         count = 0
         novel_cmds = self.executor.parser.get_novel_cmds()
         for expr in expression_bank:
@@ -122,6 +123,8 @@ class NaiveBOOTAD(PLAD):
         expression_stats = stat_estimator.get_expression_stats()
         self.logger.log_statistics(
             expression_stats, self.era, prefix="post-abstraction-expr")
+        
+        self.executor.parser.describe_all_macros()
 
     def save_with_dsl(self, era, expression_bank):
 

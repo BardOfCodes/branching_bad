@@ -194,6 +194,12 @@ class MacroParser(CSG2DParser):
         size = len(self.command_n_param.keys()) + 1
         return size
 
+    def describe_all_macros(self):
+        for macro, expression in self.named_expression.items():
+            print("Macro: ", macro)
+            print("Expression: ", expression)
+            print("")
+
     def get_expression(self, command_list, clip=True, quantize=True, resolution=33):
         # we need to first clean up the command list
         # if a command has a true expression with a macro we need to remove all its children

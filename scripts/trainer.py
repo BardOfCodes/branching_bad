@@ -18,13 +18,12 @@ def main():
 
     args, reminder_args = arg_parser.parse_known_args()
     config = load_config_file(args.config_file, reminder_args)
-    if args.debug:
-        G = config.to_graph()
-        save_file = os.path.join(config.log_path, "config.excalidraw")
-        sketch_builder = SketchBuilder(save_path=save_file)
-        sketch_builder.render_stack_sketch(G, stacking="vertical")
-        sketch_builder.export_to_file()
-        del sketch_builder
+    G = config.to_graph()
+    save_file = os.path.join(config.LOGGER.LOG_DIR, "config.excalidraw")
+    sketch_builder = SketchBuilder(save_path=save_file)
+    sketch_builder.render_stack_sketch(G, stacking="vertical")
+    sketch_builder.export_to_file()
+    del sketch_builder
 
     experiment_proc = getattr(meta_factory, config.EXPERIMENT_MODE)
     experiment = experiment_proc(config)
