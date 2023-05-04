@@ -1,4 +1,5 @@
 from .parser import CSG2DParser
+from .parser import MacroParser
 from .compiler import CSG2DCompiler
 from collections import defaultdict
 import numpy as np
@@ -24,6 +25,9 @@ class CSG2DExecutor:
         canvas = self.compiler.evaluate(
             draw_transforms, inversion_array, intersection_matrix)
         return canvas
+
+    def get_cmd_list(self,):
+        return self.parser.get_cmd_list()
 
     def set_device(self, device):
         self.parser.set_device(device)
@@ -80,3 +84,18 @@ class CSG2DExecutor:
             pred_canvas.append(canvas[start:end])
 
         return pred_canvas
+
+
+class MacroExecutor(CSG2DExecutor):
+
+    def __init__(self, config, device):
+
+        self.resolution = config.RESOLUTION
+        self.parser = MacroParser(device)
+        self.compiler = CSG2DCompiler(self.resolution, device)
+
+    def update_macros(self, macro_dict):
+        self.parser.update_macros(macro_dict)
+
+    def get_dsl_size(self):
+        return self.parser.get_dsl_size()

@@ -185,6 +185,27 @@ class BaseTransformer(nn.Module):
         new_partial_seq = th.cat((partial_seq, cmd_token_embeddings), dim=0)
         return new_partial_seq
 
+    def update_cmds(self, cmds):
+        
+        self.command_token_count = len(cmds)
+        new_command_tokens = nn.Embedding(
+            self.command_token_count, self.attn_size)
+        # Learn them new?
+        prev_n_cmds = self.command_tokens.num_embeddings
+        new_command_tokens.weight[:prev_n_cmds].data = self.command_tokens.weight.detach().data
+        # also reset the cmd predictor?
+        # for param in self.cmd_vector.layers:
+        #     print(type(param))
+        #     self.initialize_weights(param)
+        # for param in self.after_attn_process.layers:
+        #     print(type(param))
+        #     self.initialize_weights(param)
+        # for param in self.param_predictor.layers:
+        #     print(type(param))
+        #     self.initialize_weights(param)
+        
+        self.command_tokens = new_command_tokens
+        
     def extend_seq_batch(self, partial_seq, actions_in):
 
         actions_in = actions_in.long()

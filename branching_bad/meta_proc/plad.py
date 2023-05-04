@@ -1,3 +1,4 @@
+from collections import defaultdict
 import torch as th
 import torch.nn as nn
 import numpy as np
@@ -23,10 +24,14 @@ class PLAD(Pretrain):
         self.dataset_config = config.PLAD.DATASET
         self.inner_patience = config.PLAD.INNER_PATIENCE
         self.outer_patience = config.PLAD.OUTER_PATIENCE
-        self.score_tolerance = config.PLAD.SCORE_TOLERANCE
         self.max_inner_iter = config.PLAD.MAX_INNER_ITER
+        self.max_outer_iter = config.PLAD.MAX_OUTER_ITER
+        self.n_expr_per_entry = config.PLAD.N_EXPR_PER_ENTRY
 
-    def start_experiment(self,):
+        self.epoch_iters = config.TRAIN.DATASET.EPOCH_SIZE * \
+            config.DATA_LOADER.TRAIN_WORKERS // config.DATA_LOADER.TRAIN_BATCH_SIZE * 2
+
+    def start_experiment(self, train_expressions=None, cutshort=False):
         # Create the dataloaders:
         dl_specs = self.dl_specs
         collator = PLADCollator(self.compiler)
@@ -40,12 +45,21 @@ class PLAD(Pretrain):
         outer_loop_saturation = False
         outer_iter = 0
         epoch = 0
+        training_dataset = None
         while (not outer_loop_saturation):
             # Search for good programs:
 
             self.model.eval()
-            training_dataset = self.generate_training_dataset(
-                epoch, original_train_loader)
+            if outer_iter == 0 and train_expressions is not None:
+                training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
+                                                               device=self.train_dataset.device,
+                                                               targets=self.train_dataset.targets,
+                                                               expression_bank=train_expressions,
+                                                               executor=self.executor,
+                                                               model_translator=self.model_translator,)
+            else:
+                training_dataset = self.generate_training_dataset(
+                    epoch, original_train_loader, training_dataset)
 
             # Create data loaders:
             # NOTE: PLAD dataset loader returns 2x the batch size, hence reducing batch size.
@@ -53,26 +67,35 @@ class PLAD(Pretrain):
                                                     num_workers=dl_specs.TRAIN_WORKERS, shuffle=False, collate_fn=collator,
                                                     persistent_workers=dl_specs.TRAIN_WORKERS > 0)
             previous_best = self.best_score
-            epoch, _ = self.inner_loop(outer_iter, epoch, train_loader, val_loader)
+            if cutshort:
+                return training_dataset.expression_bank
+            
+            epoch, _ = self.inner_loop(
+                outer_iter, epoch, train_loader, val_loader)
+            # Load previous best weights?
+            self.load_weights(file_name="best")
             new_best = self.best_score
             print("Inner loop increased score from {} to {}".format(
                 previous_best, new_best))
             # outer saturation check:
-            if outer_iter - self.best_outer_iter >= self.outer_patience:
+            outer_condition_1 = outer_iter - self.best_outer_iter >= self.outer_patience
+            outer_condition_2 = outer_iter > self.max_outer_iter
+            if outer_condition_1 or outer_condition_2:
                 print("Reached outer saturation.")
                 outer_loop_saturation = True
             else:
                 print("Outer loop not saturated yet.")
 
             outer_iter += 1
-        predicted_expressions = training_dataset.predicted_expressions
-        return predicted_expressions
+        expression_bank = training_dataset.expression_bank
+        return expression_bank
 
     def inner_loop(self, outer_iter, epoch, train_loader, val_loader):
         min_inner_iter = 0
         last_improvment_iter = 0
         self.model.train()
         for inner_iter in range(min_inner_iter, self.max_inner_iter):
+            st = time.time()
             for iter_ind, (canvas, actions, action_validity, n_actions) in enumerate(train_loader):
                 # model forward:
                 output = self.model.forward_train(canvas, actions)
@@ -84,10 +107,11 @@ class PLAD(Pretrain):
                 self.optimizer.step()
 
                 if iter_ind % self.log_interval == 0:
-                    self.log_statistics(
+                    self.log_statistics(outer_iter, inner_iter, 
                         output, actions, action_validity, n_actions, loss_statistics, epoch, iter_ind)
             self.model.eval()
-            stat_estimator = self._evaluate(epoch, val_loader)
+            stat_estimator = self._evaluate(epoch, val_loader, executor=self.executor,
+                                            model_translator=self.model_translator)
             self.model.train()
 
             final_metrics = stat_estimator.get_final_metrics()
@@ -100,63 +124,79 @@ class PLAD(Pretrain):
                 self.best_outer_iter = outer_iter
                 self._save_model(epoch, "best")
                 last_improvment_iter = inner_iter
+            else:
+                print("New score: ", final_score, " is not better than best score: ", self.best_score)
+                
             if inner_iter - last_improvment_iter >= self.inner_patience:
                 # hit saturation.
                 print("Reached inner saturation.")
                 break
                 # Save model checkpoint?
             if epoch % self.save_freq == 0:
-                self._save_model(epoch)
+                self._save_model(epoch, prefix="plad")
+            et = time.time()
+            print("Epoch Time: ", et - st)
             epoch += 1
         return epoch, final_metrics
 
-    def generate_training_dataset(self, epoch, original_train_loader):
+    def generate_training_dataset(self, epoch, original_train_loader, previous_training_dataset=None):
 
         # Do beam search on the training set:
         print("Generating training dataset...")
         stat_estimator = self._evaluate(
-            epoch, original_train_loader, prefix="search")
+            epoch, original_train_loader, prefix="search",
+            executor=self.executor, model_translator=self.model_translator)
+        # cPickle.dump(stat_estimator, open("tmp.pkl", "wb"))
+        # stat_estimator = cPickle.load(open("tmp.pkl", "rb"))
         # Now from expressions and corresponding canvases create the new dataset:
+        if not previous_training_dataset is None:
+            prev_exprs = previous_training_dataset.expression_bank
+            new_exprs = stat_estimator.expression_bank
+            new_expression_bank = self.update_expression_banks(
+                new_exprs, prev_exprs)
+        else:
+            # TODO: Limit the number of selections here.
+            new_expression_bank = stat_estimator.expression_bank
 
         training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
                                                        device=self.train_dataset.device,
                                                        targets=self.train_dataset.targets,
-                                                       expressions=stat_estimator.expressions)
+                                                       expression_bank=new_expression_bank)
         return training_dataset
 
-    def _evaluate(self, epoch, val_loader, log=True, prefix="val"):
-        ...
-        # Max Batch size will be BS * Beam Size ^ 2
+    def update_expression_banks(self, new_expression_bank, prev_expression_bank):
 
-        # TEMPORARY
-        st = time.time()
-        stat_estimator = StatEstimator()
+        updated_expression_bank = []
+        all_expression_bank = defaultdict(list)
+        unique_expression_bank = defaultdict(set)
+        prev_exprs = prev_expression_bank
+        new_exprs = new_expression_bank
+        for cur_expr in prev_exprs:
+            target_index = cur_expr['target_index']
+            expr = " ".join(cur_expr['expression'])
+            if expr not in unique_expression_bank[target_index]:
+                unique_expression_bank[target_index].add(expr)
+                all_expression_bank[target_index].append(cur_expr)
+        for cur_expr in new_exprs:
+            target_index = cur_expr['target_index']
+            expr = " ".join(cur_expr['expression'])
+            if expr not in unique_expression_bank[target_index]:
+                unique_expression_bank[target_index].add(expr)
+                all_expression_bank[target_index].append(cur_expr)
+        # now remove duplicates:
+        
+        for target_index in all_expression_bank:
+            cur_exprs = all_expression_bank[target_index]
+            # deduplicate
+            cur_exprs.sort(key=lambda x: x['score'], reverse=True)
+            selected_exprs = cur_exprs[:self.n_expr_per_entry]
+            updated_expression_bank.extend(selected_exprs)
 
-        # Validation
-        nn_interpreter = self.train_dataset.model_translator
-        executor = self.train_dataset.executor
-        for iter_ind, (canvas, _, _, _) in enumerate(val_loader):
-            # model forward:
-            with th.no_grad():
-                pred_actions = batch_beam_decode(
-                    self.model, canvas, self.state_machine_class)
-                # mass convert to expressions
-                pred_expressions = nn_interpreter.translate_batch(pred_actions)
-                # expressions to executions
-                pred_canvases = executor.eval_batch_execute(pred_expressions)
-                # select best for each based on recon. metric
-                # push batch of canvas to stat_estimator
-                stat_estimator.eval_batch_execute(
-                    pred_canvases, pred_expressions, canvas)
-            print(f"Evaluated {iter_ind} batches", "in time", time.time() - st)
+        return updated_expression_bank
 
-        et = time.time()
-        final_metrics = stat_estimator.get_final_metrics()
-        final_metrics["best_score"] = self.best_score
-        final_metrics['time'] = et - st
-        final_metrics["inner_iter"] = epoch
-        log_iter = epoch * self.epoch_iters
-        if log:
-            self.logger.log_statistics(final_metrics, log_iter, prefix=prefix)
-
-        return stat_estimator
+    def log_statistics(self, outer_iter, inner_iter, output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind):
+        duration_statistics = {"Outer": outer_iter, "Inner": inner_iter, "iter": iter_ind}
+        log_iter = epoch * self.epoch_iters + iter_ind
+        self.logger.log_statistics(
+            duration_statistics, log_iter, prefix="duration")
+        self._log_loss_statistics( output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind)

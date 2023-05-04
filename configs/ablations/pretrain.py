@@ -46,20 +46,26 @@ class PretrainConfFactory(CNF):
 
         config.OBJECTIVE = CN()
         # Note: This is used with score, so inverse sign.
-        config.OBJECTIVE.LENGTH_TAX = - 1e-2
-        config.OBJECTIVE.CMD_ENTROPY_COEF = - 5e-3
-        config.OBJECTIVE.PARAM_ENTROPY_COEF = - 5e-3
+        config.OBJECTIVE.LENGTH_TAX = - 0.01
+        config.OBJECTIVE.CMD_ENTROPY_COEF =  - 1e-2
+        config.OBJECTIVE.PARAM_ENTROPY_COEF =  - 1e-2
         config.OBJECTIVE.WEIGHT_DECAY_COEF = 1e-5
+        config.OBJECTIVE.SCORE_TOLERANCE = 5e-3
+        config.OBJECTIVE.NOVELTY_SCORE_WEIGHT = 0# 1e-1
 
         NN_INTERPRETER = CN()
         NN_INTERPRETER.QUANTIZATION = input_quant
         config.TRAIN.DATASET.NN_INTERPRETER = NN_INTERPRETER.clone()
 
+        config.SEARCH = CN()
+        config.SEARCH.BEAM_SIZE = 10
+        config.SEARCH.BEAM_RETURN = 2
+        
         config.DATA_LOADER = CN()
         config.DATA_LOADER.TRAIN_BATCH_SIZE = 512
         config.DATA_LOADER.VAL_BATCH_SIZE = 256
         config.DATA_LOADER.TRAIN_WORKERS = 4
-        config.DATA_LOADER.VAL_WORKERS = 2
+        config.DATA_LOADER.VAL_WORKERS = 0
 
         config.TRAIN_SPECS = CN()
         config.TRAIN_SPECS.LR = 0.0001

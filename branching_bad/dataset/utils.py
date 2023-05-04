@@ -18,8 +18,14 @@ class PLADCollator(Collator):
 
 
 def val_collate_fn(batch):
-    batch = th.stack(batch, dim=0).to("cuda")
-    return batch, None, None, None
+    batch_all = []
+    indices = []
+    for cur in batch:
+        batch_all.append(cur[0])
+        indices.append(cur[1])
+    
+    batch = th.stack(batch_all, dim=0).to("cuda")
+    return batch, indices
 
 
 def wrap_format_with_compiler(format_func, compiler):

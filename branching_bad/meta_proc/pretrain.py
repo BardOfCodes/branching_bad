@@ -42,7 +42,12 @@ class Pretrain():
         self.cmd_entropy_coef = config.OBJECTIVE.CMD_ENTROPY_COEF
         self.param_entropy_coef = config.OBJECTIVE.PARAM_ENTROPY_COEF
         self.weight_decay_coef = config.OBJECTIVE.WEIGHT_DECAY_COEF
+        self.score_tolerance = config.OBJECTIVE.SCORE_TOLERANCE
+        # USED only for BOOTAD
+        self.novelty_score_weight = config.OBJECTIVE.NOVELTY_SCORE_WEIGHT
 
+        self.search_beam_size = config.SEARCH.BEAM_SIZE
+        self.search_beam_return = config.SEARCH.BEAM_RETURN
         self.save_dir = config.SAVER.DIR
         self.save_freq = config.SAVER.EPOCH
 
@@ -60,6 +65,10 @@ class Pretrain():
             SM, config.DOMAIN.STATE_MACHINE_CLASS)
 
         self.best_score = -np.inf
+        self.best_epoch = 0
+
+        self.executor = self.train_dataset.executor
+        self.model_translator = self.train_dataset.model_translator
 
     def start_experiment(self,):
         # Create the dataloaders:
@@ -92,15 +101,26 @@ class Pretrain():
                 if iter_ind % self.log_interval == 0:
                     self.log_statistics(
                         output, actions, action_validity, n_actions, loss_statistics, epoch, iter_ind)
+            # Train Epoch over
             self.model.eval()
-            self._evaluate(epoch, val_loader)
+            stat_estimator = self._evaluate(
+                epoch, val_loader, executor=self.executor, model_translator=self.model_translator)
             self.model.train()
+            final_metrics = stat_estimator.get_final_metrics()
+            # inner saturation check:
+            final_score = final_metrics["score"]
+            if final_score > self.best_score + self.score_tolerance:
+                print("New best score: ", final_score)
+                self.best_score = final_score
+                self.best_epoch = epoch
+                self._save_model(epoch, "best")
             # Save model checkpoint?
             if epoch % self.save_freq == 0:
                 self._save_model(epoch)
 
     def _save_model(self, epoch, prefix="pretrain"):
         Path(self.save_dir).mkdir(parents=True, exist_ok=True)
+        self.model.cpu()
         save_obj = {
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
@@ -110,6 +130,7 @@ class Pretrain():
         file_path = os.path.join(self.save_dir, f"{prefix}_model.pt")
         print(f"saving model at epoch {epoch} at {file_path}")
         cPickle.dump(save_obj, open(file_path, "wb"))
+        self.model.cuda()
 
     def _calculate_loss(self, output, actions, action_validity):
         # calculate loss
@@ -159,10 +180,18 @@ class Pretrain():
 
         return total_loss, stat_obj
 
-    def log_statistics(self, output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind):
+    def log_statistics(self,  output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind):
+        duration_statistics = {"epoch": epoch, "iter": iter_ind, }
+        log_iter = epoch * self.epoch_iters + iter_ind
+        self.logger.log_statistics(
+            duration_statistics, log_iter, prefix="duration")
+        self._log_loss_statistics(
+            output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind)
+
+    def _log_loss_statistics(self, output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind):
         # accuracy
         # input avg. length
-        all_stats = {"Epoch": epoch, "Iter": iter_ind}
+        all_stats = {}
         cmd_sim, param_distr = output
         param_distr = param_distr.swapaxes(1, 2)
         cmd_distr_target = actions[:, :, 0].reshape(-1)
@@ -172,8 +201,9 @@ class Pretrain():
         cmd_validity = action_validity[:, 0]
         param_validity = action_validity[:, 1:-1]
         cmd_action = th.argmax(cmd_sim, dim=-1)
-        match = (cmd_action == cmd_distr_target).float()
-        cmd_acc = th.sum(th.where(cmd_validity, match, 0))/th.sum(cmd_validity)
+        cmd_match = (cmd_action == cmd_distr_target).float()
+        cmd_acc = th.sum(th.where(cmd_validity, cmd_match, 0)) / \
+            th.sum(cmd_validity)
 
         param_action = th.argmax(param_distr, dim=1)
         match = (param_action == param_distr_target).float()
@@ -182,10 +212,18 @@ class Pretrain():
                            )/th.sum(param_validity)
         mean_expr_len = th.mean(n_actions.float())
 
+        # for novel commands:
+        novel_cmds_validity = th.logical_and(
+            cmd_distr_target < self.num_commands - 4, cmd_distr_target >= 2)
+        novel_acc = th.sum(th.where(novel_cmds_validity,
+                           cmd_match, 0))/th.sum(novel_cmds_validity)
+
         statistics = {
             "cmd_acc": cmd_acc.item(),
             "param_acc": param_acc.item(),
-            "expr_len": mean_expr_len.item()
+            "novel_acc": novel_acc.item(),
+            "n_novel_cmds": th.sum(novel_cmds_validity).item(),
+            "expr_len": mean_expr_len.item(),
         }
         all_stats.update(statistics)
         loss_statistics = {
@@ -197,45 +235,68 @@ class Pretrain():
             "total_loss": loss_obj["total_obj"].item(),
         }
         log_iter = epoch * self.epoch_iters + iter_ind
-        self.logger.log_statistics(all_stats, log_iter, prefix="train-stats")
+        self.logger.log_statistics(
+            all_stats, log_iter, prefix="train-stats")
         self.logger.log_statistics(
             loss_statistics, log_iter, prefix="loss-stats")
 
-    def _evaluate(self, epoch, val_loader, log=True, prefix="val"):
+    def _evaluate(self, epoch, val_loader, log=True, prefix="val",
+                  model_translator=None, executor=None):
         ...
         # Max Batch size will be BS * Beam Size ^ 2
 
         # TEMPORARY
         st = time.time()
-        stat_estimator = StatEstimator(self.length_tax)
+        stat_estimator = StatEstimator(length_weight=self.length_tax,
+                                       novelty_score_weight=self.novelty_score_weight,
+                                       beam_return_count=self.search_beam_return)
 
         # Validation
-        nn_interpreter = self.train_dataset.model_translator
-        executor = self.train_dataset.executor
-        for iter_ind, (canvas, _, _, _) in enumerate(val_loader):
+        if model_translator is None:
+            model_translator = self.model_translator
+        if executor is None:
+            executor = self.executor
+        stat_estimator.update_novelty_cmds(executor.parser)
+        for iter_ind, (canvas, indices) in enumerate(val_loader):
             # model forward:
             with th.no_grad():
                 pred_actions = batch_beam_decode(
-                    self.model, canvas, self.state_machine_class)
+                    self.model, canvas, self.state_machine_class,
+                    n_cmds=self.num_commands, n_params=self.n_params,
+                    n_param_cmds=self.num_commands - 4,
+                    beam_size=self.search_beam_size)
                 # mass convert to expressions
-                pred_expressions = nn_interpreter.translate_batch(pred_actions)
+                pred_expressions = model_translator.translate_batch(
+                    pred_actions)
                 # expressions to executions
                 pred_canvases = executor.eval_batch_execute(pred_expressions)
                 # select best for each based on recon. metric
                 # push batch of canvas to stat_estimator
                 stat_estimator.eval_batch_execute(
-                    pred_canvases, pred_expressions, canvas)
+                    pred_canvases, pred_expressions, canvas, indices)
+            print(f"Evaluated {iter_ind} batches", "in time", time.time() - st)
 
         et = time.time()
         final_metrics = stat_estimator.get_final_metrics()
-        stats = {
-            'inner_iter': epoch,
-            'time': et - st,
-            'best_score': self.best_score,
-        }
+        stats = {}
+        final_metrics["inner_iter"] = epoch
+        final_metrics['time'] = et - st
         stats.update(final_metrics)
+        stats["best_score"] = self.best_score
+        stats["best_epoch"] = self.best_epoch
         log_iter = epoch * self.epoch_iters
+        expression_stats = stat_estimator.get_expression_stats()
         if log:
-            self.logger.log_statistics(stats, log_iter, prefix=prefix)
-
+            self.logger.log_statistics(final_metrics, log_iter, prefix=prefix)
+            self.logger.log_statistics(expression_stats, log_iter, prefix=prefix + "-expr")
         return stat_estimator
+
+    def load_weights(self, file_name):
+
+        file_path = os.path.join(self.save_dir, f"{file_name}_model.pt")
+        print(f"loading model {file_path}")
+        save_obj = cPickle.load(open(file_path, "rb"))
+        model_weights = save_obj['model']
+        self.model.cpu()
+        self.model.load_state_dict(model_weights)
+        self.model.cuda()

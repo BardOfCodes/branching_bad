@@ -31,9 +31,8 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
     beam_logp = th.zeros(beam_state_size, 1).to(device)
     partial_action_seqs = {i: [] for i in range(beam_state_size)}
 
-    n_commands = model.command_tokens.num_embeddings
     state_machine = state_machine_class(batch_size=beam_state_size,
-                                        n_commands=n_commands,
+                                        n_commands=n_cmds,
                                         device=device)
 
     finished_action_seqs = defaultdict(list)
@@ -53,6 +52,8 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
         # apply mask on actions
         mask_array = state_machine.get_state_mask()
         output_cmd_masked = output_cmd * mask_array
+        # rebalance
+        output_cmd_masked = output_cmd_masked/output_cmd_masked.sum(dim=1, keepdim=True)
         # select top k
         # no param commands:
         no_param_cmd = output_cmd_masked[:, n_param_cmds:]
@@ -62,10 +63,14 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
         # param cmds:
 
         # 1: Get the top k parameter values:
+        # selected_param_inds, final_param_probs, final_draw_options = get_parameterized_cmds_greedy(
+        #     beam_size, output_param, output_cmd_masked)
         selected_param_inds, final_param_probs, final_draw_options = get_parameterized_cmds(
-            beam_size, output_param, output_cmd_masked)
+            beam_size, output_param, output_cmd_masked, n_param_cmds=n_param_cmds)
 
         # HACK:
+        # ax_a = final_draw_options[:, :, 0]
+        # draw_command_probs = output_cmd_masked[:, :2]
         # final_param_probs = th.gather(draw_command_probs, dim=1, index=ax_a)
         # OR adjust be size:
         final_param_probs = th.exp(th.log(final_param_probs) / (n_params + 1))
@@ -73,7 +78,8 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
         # Now gather the top k for each batch id
         # if any seq is finished, add it to "complete programs".
         total_probs = th.cat([top_k_cmd_probs, final_param_probs], dim=1)
-        final_probs, final_k = th.topk(total_probs, k=beam_size, dim=1)
+        cur_beam_size = min(beam_size, total_probs.shape[1])
+        final_probs, final_k = th.topk(total_probs, k=cur_beam_size, dim=1)
 
         # expensive: could be parallelized.
         counter = 0
@@ -101,12 +107,13 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
         # for each batch id,
         for batch_id in batch_id_to_logprobs.keys():
             cur_logps = th.cat(batch_id_to_logprobs[batch_id], dim=1)
+            cur_batch_level_beam_size = min(cur_beam_size, cur_logps.shape[1])
             batch_specific_val, batch_specific_k = th.topk(
-                cur_logps, k=beam_size, dim=1)
+                cur_logps, k=cur_batch_level_beam_size, dim=1)
             batch_specific_k = batch_specific_k[0]
-            insider_ind = batch_specific_k // beam_size
-            cur_ks = batch_specific_k % beam_size
-            for i in range(beam_size):
+            insider_ind = batch_specific_k // cur_batch_level_beam_size
+            cur_ks = batch_specific_k % cur_batch_level_beam_size
+            for i in range(cur_batch_level_beam_size):
                 back_mapper_ind = insider_ind[i].item()
                 beam_ind = backward_mapper[(batch_id, back_mapper_ind)]
                 cur_k = cur_ks[i]
@@ -132,6 +139,7 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
                         finished_seq = partial_action_seqs[beam_ind]
                         finished_action_seqs[batch_id].append(finished_seq)
                     else:
+                        
                         new_beam_entry_to_batch_id[counter] = batch_id
                         new_beam_entry_to_logprobability[counter] = prev_logprob + th.log(
                             prob)
@@ -169,7 +177,8 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
                         list(params.cpu().numpy())
                     new_partial_action_seqs[counter] = cur_partial_actions + new_action
                     counter += 1
-
+        # TODO: Merge beams which are similar
+        
         if len(new_bool_count) > 0:
             # from the gathered potential seq. launch k new seq.
             beam_entry_to_batch_id = new_beam_entry_to_batch_id
@@ -180,7 +189,7 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
             partial_action_seqs = new_partial_action_seqs
             beam_state_size = len(beam_entry_to_batch_id)
             state_machine = state_machine_class(batch_size=beam_state_size,
-                                                n_commands=n_commands,
+                                                n_commands=n_cmds,
                                                 device=device)
             state_machine.bool_count = th.stack(new_bool_count, 0)
             state_machine.canvas_count = th.stack(new_canvas_count, 0)
@@ -202,7 +211,7 @@ def batch_beam_decode(model, canvas, state_machine_class, beam_size=10,
     return all_actions_seqs
 
 
-def get_parameterized_cmds(beam_size, output_param, output_cmd_masked):
+def get_parameterized_cmds(beam_size, output_param, output_cmd_masked, n_param_cmds):
     top_k_param_vals, top_k_param_inds = th.topk(
         output_param, k=beam_size, dim=2)
     a = top_k_param_vals[:, 0, :]
@@ -224,7 +233,7 @@ def get_parameterized_cmds(beam_size, output_param, output_cmd_masked):
         top_k_fliped, dim=1, index=selected_params)
     # 2: Get the Cmd with parameters:
     # all except bools and stop
-    draw_command_probs = output_cmd_masked[:, :2]
+    draw_command_probs = output_cmd_masked[:, :n_param_cmds]
     all_probs = th.einsum(
         "xa, xb-> xab", draw_command_probs, selected_param_probs)
     all_probs = all_probs.reshape(all_probs.shape[0], -1)
@@ -234,6 +243,33 @@ def get_parameterized_cmds(beam_size, output_param, output_cmd_masked):
     ax_b = final_param_top_k % beam_size
     final_draw_options = th.stack([ax_a, ax_b], dim=2)
     return selected_param_inds, final_param_probs, final_draw_options
+
+# Depriciated
+def get_parameterized_cmds_greedy(beam_size, output_param, output_cmd_masked):
+    top_k_param_vals, top_k_param_inds = th.topk(
+        output_param, k=1, dim=2)
+    a = top_k_param_inds[:, 0, :]
+    b = top_k_param_inds[:, 1, :]
+    c = top_k_param_inds[:, 2, :]
+    d = top_k_param_inds[:, 3, :]
+    e = top_k_param_inds[:, 4, :]
+    selected_param_inds = th.stack([a, b, c, d, e], dim=2)
+    # 2: Get the Cmd with parameters:
+    # all except bools and stop
+    draw_command_probs = output_cmd_masked[:, :2]
+    cur_beam_size = min(draw_command_probs.shape[1], beam_size)
+    top_k_param_vals = th.prod(top_k_param_vals, dim=1)
+    all_probs = th.einsum(
+        "xa, xb-> xab", draw_command_probs, top_k_param_vals)
+    all_probs = all_probs.reshape(all_probs.shape[0], -1)
+    final_param_probs, final_param_top_k = th.topk(
+        all_probs, k=cur_beam_size, dim=1)
+    
+    ax_a = final_param_top_k % cur_beam_size
+    ax_b = (final_param_top_k // cur_beam_size)
+    final_draw_options = th.stack([ax_a, ax_b], dim=2)
+    return selected_param_inds, final_param_probs, final_draw_options
+
 
 
 def get_action_tensor(cmd_tensor, param_tensor, indicator_tensor):

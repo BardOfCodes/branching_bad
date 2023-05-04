@@ -6,6 +6,9 @@ import h5py
 import _pickle as cPickle
 from .dataset_registry import DatasetRegistry
 from branching_bad.domain import CSG2DExecutor, GenNNInterpreter
+from branching_bad.domain.csg2d_executor import MacroExecutor
+from branching_bad.domain.nn_interpreter import MacroNNInterpreter
+
 
 DATA_PATHS = {
     1: "synthetic/one_ops/expressions.txt",
@@ -133,8 +136,10 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
 
         actions = self.model_translator.expression_to_action(expression)
         n_actions = actions.shape[0]
-        actions = np.pad(actions, ((0, self.max_actions - n_actions),
-                                   (0, 0)),  mode="constant", constant_values=0)
+        n_pad = self.max_actions - n_actions
+        if n_pad > 0:
+            actions = np.pad(actions, ((0, self.max_actions - n_actions),
+                                    (0, 0)),  mode="constant", constant_values=0)
         action_validity = self.action_validity.copy()
         action_validity[:n_actions, :] = True
         # map zeros when param is not to be measured.
@@ -149,7 +154,7 @@ class SynthCSG2DDataset(th.utils.data.IterableDataset):
 
 @DatasetRegistry.register("CADCSG2DDataset")
 class CADCSG2DDataset(SynthCSG2DDataset):
-
+    """ Important: NO SHUFFLE"""
     def __init__(self, config, subset, device, *args, **kwargs):
         super(SynthCSG2DDataset, self).__init__(*args, **kwargs)
 
@@ -179,17 +184,16 @@ class CADCSG2DDataset(SynthCSG2DDataset):
         return self.epoch_size
 
     def __getitem__(self, index):
-
         output = self.targets[index].copy()
         output = th.tensor(output)
 
-        return output
+        return output, index
 
 
 @DatasetRegistry.register("PLADCSG2DDataset")
 class PLADCSG2DDataset(CADCSG2DDataset):
 
-    def __init__(self, config, device, targets, expressions):
+    def __init__(self, config, device, targets, expression_bank):
         subset = "train"
         self.targets = targets
         self.epoch_size = len(targets) * 2
@@ -205,12 +209,15 @@ class PLADCSG2DDataset(CADCSG2DDataset):
         self.bake_file = config.BAKE_FILE
         self.cache = {}
         # Will always back first:
-        self.expressions = expressions
+        self.expression_bank = expression_bank
+        self.expressions = [x['expression'] for x in expression_bank]
         cache = self.bake_dataset()
         # create additional copies
-        for i in range(len(expressions)):
-            cache[i] = list(cache[i]) + [self.targets[i]]
-        cPickle.dump(cache, open(self.bake_file, "wb"))
+        for i in range(len(self.expressions)):
+            target_ind = self.expression_bank[i]['target_index']
+            cache[i] = list(cache[i]) + [target_ind]
+            
+        # cPickle.dump(cache, open(self.bake_file, "wb"))
 
         if subset == "train":
             random.shuffle(cache)
@@ -221,8 +228,45 @@ class PLADCSG2DDataset(CADCSG2DDataset):
     def __getitem__(self, index):
 
         index = index % self.cache_size
-        expr_obj, actions, action_validity, n_actions, _, target = self.cache[index]
+        expr_obj, actions, action_validity, n_actions, _, target_ind = self.cache[index]
+        target = self.targets[target_ind]# .copy()
         draw_obj = {k: th.from_numpy(v) for k, v in expr_obj[0].items()}
         expr_obj = (draw_obj, expr_obj[1], expr_obj[2])
         output = th.tensor(target)
         return expr_obj, actions, action_validity, n_actions, output
+
+@DatasetRegistry.register("MacroDataset")
+class MacroDataset(PLADCSG2DDataset):
+    
+    def __init__(self, config, device, targets, expression_bank, executor, model_translator):
+        
+        subset = "train"
+        self.targets = targets
+        self.epoch_size = len(targets) * 2
+
+        self.device = device
+        self.executor = executor
+        self.model_translator = model_translator
+        self.epoch_size = config.EPOCH_SIZE
+        self.max_actions = config.MAX_ACTIONS
+        self.subset = subset
+        self.action_validity = np.zeros((self.max_actions, 7), dtype=bool)
+
+        self.bake_file = config.BAKE_FILE
+        self.cache = {}
+        # Will always back first:
+        self.expression_bank = expression_bank
+        self.expressions = [x['expression'] for x in expression_bank]
+        cache = self.bake_dataset()
+        # create additional copies
+        for i in range(len(self.expressions)):
+            target_ind = self.expression_bank[i]['target_index']
+            cache[i] = list(cache[i]) + [target_ind]
+            
+
+        if subset == "train":
+            random.shuffle(cache)
+        self.cache_size = len(cache)
+        self.cache = {i: cache[i] for i in range(self.cache_size)}
+        self.expressions = [x[-2] for x in cache]
+        

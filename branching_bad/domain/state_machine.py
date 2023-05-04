@@ -6,7 +6,7 @@ class BatchedCSG2DStateMachine:
     
     def __init__(self, batch_size, n_commands, device):
         self.n_commands = n_commands
-        self.max_bools = 10
+        self.max_bools = 9
         self.max_canvas = self.max_bools + 1
         self.bool_count = th.from_numpy(np.zeros(batch_size)).to(device)
         self.canvas_count = th.from_numpy(np.zeros(batch_size)).to(device)

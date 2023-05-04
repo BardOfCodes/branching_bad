@@ -15,7 +15,10 @@ class GenNNInterpreter:
         self.empty_params = np.zeros((5), dtype=np.int32)
         self.empty_param_action = np.array([0])
         self.active_param_action = np.array([1])
-
+        self.empty_param_actions = empty_param_actions
+        self.draw_commands = draw_commands
+        self.transform_commands = transform_commands
+        
         self.conversion_delta = CONVERSION_DELTA
 
         self.two_scale_delta = (
@@ -43,7 +46,6 @@ class GenNNInterpreter:
             'intersection': 0,
             'difference': 0,
             '$': 0,
-
         }
 
     def expression_to_action(self, expression_list):
@@ -52,23 +54,23 @@ class GenNNInterpreter:
             cmd_type_params_action_type = self.single_expression_to_action(
                 expr)
             action_array.append(cmd_type_params_action_type)
-        last_expr = expression_list[-1]
-        if last_expr != "$":
-            cmd_type_params_action_type = self.single_expression_to_action("$")
-            action_array.append(cmd_type_params_action_type)
+        # last_expr = expression_list[-1]
+        # if last_expr != "$":
+        #     cmd_type_params_action_type = self.single_expression_to_action("$")
+        #     action_array.append(cmd_type_params_action_type)
         action_array = np.stack(action_array, 0)
 
         return action_array
 
     def single_expression_to_action(self, expr):
         command_symbol = expr.split("(")[0]
-        if command_symbol in empty_param_actions:
+        if command_symbol in self.empty_param_actions:
             cmd_type = self.command_index[command_symbol]
             params = self.empty_params.copy()
             action_type = self.empty_param_action.copy()
             action_array = np.concatenate([cmd_type, params, action_type], 0)
 
-        elif command_symbol in draw_commands:
+        elif command_symbol in self.draw_commands:
             cmd_type = self.command_index[command_symbol]
             action_type = self.active_param_action.copy()
             # Then there are 3 transforms:
@@ -130,3 +132,38 @@ class GenNNInterpreter:
             expressions_dict.append(expressions)
             
         return expressions_dict
+
+class MacroNNInterpreter(GenNNInterpreter):
+    
+    
+    def update_macros(self, macro_dicts):
+        
+        new_cmd_dict = {}
+        for cmd, value in self.command_index.items():
+            if cmd in self.draw_commands:
+                if isinstance(value, np.ndarray):
+                    value = value[0]
+                new_cmd_dict[cmd] = value
+        
+        n_commands = len(new_cmd_dict)
+        for ind, macro in enumerate(macro_dicts):
+            name = macro.name
+            new_cmd_dict[name] = n_commands + ind
+            self.expr_to_n_params[name] = 5# macro['n_params']
+            self.draw_commands.append(name)
+        
+        n_macros = len(new_cmd_dict)
+        update_dict = {
+            'union': n_macros + 0,
+            'intersection': n_macros + 1,
+            'difference': n_macros + 2,
+            '$': n_macros + 3,
+            }
+        new_cmd_dict.update(update_dict)
+        self.index_to_expr = {}
+        for key, value in new_cmd_dict.items():
+            self.index_to_expr[value] = key
+        self.command_index = new_cmd_dict
+        for key, value in self.command_index.items():
+            self.command_index[key] = np.array([value], dtype=np.int32)
+            
