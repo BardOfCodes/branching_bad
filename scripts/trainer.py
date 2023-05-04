@@ -1,4 +1,5 @@
 import os
+import sys
 import torch as th
 from wacky import load_config_file
 from procXD import SketchBuilder
@@ -20,6 +21,7 @@ def main():
     config = load_config_file(args.config_file, reminder_args)
     G = config.to_graph()
     save_file = os.path.join(config.LOGGER.LOG_DIR, "config.excalidraw")
+    sys.path.insert(0, config.SIRI_PATH)
     sketch_builder = SketchBuilder(save_path=save_file)
     sketch_builder.render_stack_sketch(G, stacking="vertical")
     sketch_builder.export_to_file()

@@ -1,23 +1,21 @@
 from collections import defaultdict
 import sys
 import torch as th
-sys.path.insert(0, "/home/aditya/projects/rl/rl_csg")
-from CSG.utils.train_utils import arg_parser, load_config, prepare_model_config_and_env
 # import CSG.bc_trainers as bc_trainers
-from CSG.bc_trainers.rewrite_engines.rewriters import CodeSplicer
-from CSG.bc_trainers.rewrite_engines.subexpr_cache import MergeSplicerCache
 from .code_splicer import BootADSplicer
 from stable_baselines3.common import utils
-import CSG.env as csg_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 import _pickle as cPickle
 import os
+
+from CSG.utils.train_utils import arg_parser, load_config
+import CSG.env as csg_env
 
 
 class CSCrafter():
     
     def __init__(self, bbad_config):
-        
+                
         # create config
         self.config_file = bbad_config.CONFIG_FILE
         self.length_tax_rate = bbad_config.LENGTH_TAX_RATE

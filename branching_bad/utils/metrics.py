@@ -33,6 +33,9 @@ class StatEstimator:
             for cmd in expression['expression']:
                 cmd_symbol = cmd.split("(")[0]
                 count_dict[cmd_symbol] += 1
+        # sort the expression dictionary:
+        count_dict = {k: v for k, v in sorted(count_dict.items(), key=lambda item: item[1], reverse=True)}
+                
         return count_dict
         
         

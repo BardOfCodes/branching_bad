@@ -13,7 +13,6 @@ from branching_bad.utils.logger import Logger
 from branching_bad.utils.metrics import StatEstimator
 from branching_bad.utils.beam_utils import batch_beam_decode
 from .plad import PLAD
-from .abstraction_crafter.cs_crafter import CSCrafter
 from branching_bad.domain.csg2d_executor import MacroExecutor
 from branching_bad.domain.nn_interpreter import MacroNNInterpreter
 from collections import defaultdict
@@ -28,6 +27,8 @@ class NaiveBOOTAD(PLAD):
         # Do inner loop PLAD
         # DO outer loop Abstraction.
         self.best_dsl_score = -np.inf
+        # Since it depends on the location of SIRI Project
+        from .abstraction_crafter.cs_crafter import CSCrafter
         self.abstraction_crafter = CSCrafter(config.ABSTRACTION)
 
         self.dsl_weight = config.ABSTRACTION.DSL_WEIGHT

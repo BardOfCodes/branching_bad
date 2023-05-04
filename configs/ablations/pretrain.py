@@ -13,9 +13,11 @@ class PretrainConfFactory(CNF):
         if machine == "local":
             MACHINE_DIR = "/media/aditya/DATA/projects/branching_bad"
             DATA_PATH = "/home/aditya/data/synthetic_data/FCSG2D_data"
+            SIRI_PATH = "/home/aditya/projects/rl/rl_csg"
         else:
             MACHINE_DIR = "/users/aganesh8/data/aganesh8/projects/branching_bad"
             DATA_PATH = "/users/aganesh8/data/aganesh8/data/synthetic_data/FCSG2D_data"
+            SIRI_PATH = "/users/aganesh8/data/aganesh8/projects/rl/rl_csg"
         canvas_res = 64
         input_quant = 33
         # Create Config object:
@@ -24,6 +26,7 @@ class PretrainConfFactory(CNF):
         config.EXPERIMENT_MODE = "Pretrain"
         config.DATA_PATH = DATA_PATH
         config.MACHINE_DIR = MACHINE_DIR
+        config.SIRI_PATH = SIRI_PATH
 
         config.DEVICE = "cuda"
 

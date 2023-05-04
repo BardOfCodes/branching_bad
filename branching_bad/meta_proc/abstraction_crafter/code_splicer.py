@@ -1,7 +1,4 @@
 from .macro import Macro
-from CSG.env.csg2d.languages import GraphicalMCSG2DCompiler, MCSG2DParser, PCSG2DParser
-from CSG.bc_trainers.rewrite_engines.code_splice_utils import get_new_command, distill_transform_chains
-from CSG.bc_trainers.rewrite_engines.subexpr_cache import MergeSplicerCache
 import numpy as np
 import torch as th
 import time
@@ -9,6 +6,10 @@ import random
 import faiss
 import sys
 import _pickle as cPickle
+
+from CSG.env.csg2d.languages import GraphicalMCSG2DCompiler
+from CSG.bc_trainers.rewrite_engines.code_splice_utils import distill_transform_chains
+from CSG.bc_trainers.rewrite_engines.subexpr_cache import MergeSplicerCache
 
 MAX_SIZE = int(100000)
 
@@ -168,10 +169,11 @@ class BootADSplicer(MergeSplicerCache):
                         score_delta = new_score - previous_reward
                         score_deltas.append(score_delta)
                         add_counter += 1
-            if add_counter > n_new_required:
-                print(f"Added {add_counter} new expressions. Stoping search")
-                break
-                
+            # if add_counter > n_new_required:
+            #     print(f"Added {add_counter} new expressions. Stoping search")
+            #     break
+        new_expression_bank.sort(key=lambda x: x['score'], reverse=True)
+        new_expression_bank = new_expression_bank[:n_new_required]
         et = time.time()
         print("New program Search", et - st)
         print("Evaluated %d expressions with macros" % counter)
@@ -189,8 +191,8 @@ class BootADSplicer(MergeSplicerCache):
             slot_id = cmd_obj[0]
             target_id = cmd_obj[1]
             new_cmd_list = cmd_obj[2]
+            old_score = cmd_obj[3]
             # old_cmd_list = cmd_obj[3]
-            old_score = cmd_obj[4]
             # old_expression = cmd_obj[5]
             # get targe:
             target_np, _ = temp_env.program_generator.get_executed_program(
