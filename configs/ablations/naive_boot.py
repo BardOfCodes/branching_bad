@@ -17,7 +17,8 @@ class NaiveBootConfFactory(CNF):
         
         config.ABSTRACTION = CN()
         config.ABSTRACTION.NAME = "CS"
-        config.ABSTRACTION.CONFIG_FILE = "/home/aditya/projects/rl/rl_csg/configs/ablations/finals/final_srt.py"
+        config.ABSTRACTION.CONFIG_FILE = os.path.join(config.SIRI_PATH, "configs/ablations/finals/final_srt.py")
+        config.ABSTRACTION.MACHINE = config.MACHINE
         config.ABSTRACTION.LENGTH_TAX_RATE = config.OBJECTIVE.LENGTH_TAX
         config.ABSTRACTION.SAVE_DIR = os.path.join(config.MACHINE_DIR, f"CS/{config.NAME}")
         config.ABSTRACTION.LANGUAGE_NAME = "FCSG2D"

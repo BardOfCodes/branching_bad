@@ -23,8 +23,11 @@ class CSCrafter():
         self.language_name = bbad_config.LANGUAGE_NAME # FCSG2D
         
         device = th.device("cuda")
-        arg_list = ["--config", self.config_file]
+        arg_list = ["--config", self.config_file,]
         # create the rewriter
+        if config.MACHINE == "CCV":
+            arg_list.extend(["--machine", "CCV"])
+            
         args = arg_parser.parse_args(arg_list)
         config = load_config(args)
         config.BC.CS.USE_CANONICAL = True

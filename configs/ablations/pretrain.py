@@ -27,6 +27,7 @@ class PretrainConfFactory(CNF):
         config.DATA_PATH = DATA_PATH
         config.MACHINE_DIR = MACHINE_DIR
         config.SIRI_PATH = SIRI_PATH
+        config.MACHINE = machine
 
         config.DEVICE = "cuda"
 

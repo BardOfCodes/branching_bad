@@ -14,7 +14,7 @@ class PLADConfFactory(CNF):
         config.PLAD = CN()
         config.PLAD.INNER_PATIENCE = 5
         config.PLAD.OUTER_PATIENCE = 1
-        config.PLAD.MAX_INNER_ITER = 10
+        config.PLAD.MAX_INNER_ITER = 7
         config.PLAD.MAX_OUTER_ITER = 1
         config.PLAD.N_EXPR_PER_ENTRY = 3
 
