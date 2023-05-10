@@ -27,6 +27,7 @@ class NaiveBOOTAD(PLAD):
         # Do inner loop PLAD
         # DO outer loop Abstraction.
         self.best_dsl_score = -np.inf
+        self.best_dsl_era = 0
         # Since it depends on the location of SIRI Project
         from .abstraction_crafter.cs_crafter import CSCrafter
         self.abstraction_crafter = CSCrafter(config.ABSTRACTION)

@@ -98,7 +98,7 @@ class BranchingBAD(NaiveBOOTAD):
             # Assume the inner loop succeded. Outcome? Expression bank.
             # Perform Merge Splicing on expression bank expressions.
 
-            if new_dsl_score > original_dsl_score + self.dsl_score_tolerance:
+            if plad_dsl_score > original_dsl_score + self.dsl_score_tolerance:
                 self.best_dsl_era = self.era
                 self.best_dsl_score = new_dsl_score
 
