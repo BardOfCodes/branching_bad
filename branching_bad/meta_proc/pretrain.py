@@ -131,6 +131,15 @@ class Pretrain():
         print(f"saving model at epoch {epoch} at {file_path}")
         cPickle.dump(save_obj, open(file_path, "wb"))
         self.model.cuda()
+        # small save just score:
+        diff_save_obj = {
+            "epoch": epoch,
+            "score": self.best_score,
+            "era": self.era
+        }
+        file_path = os.path.join(self.save_dir, f"{prefix}_{self.era}_{epoch}_info.pkl")
+        cPickle.dump(diff_save_obj, open(file_path, "wb"))
+        
 
     def _calculate_loss(self, output, actions, action_validity):
         # calculate loss

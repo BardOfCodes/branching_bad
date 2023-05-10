@@ -26,8 +26,7 @@ class PLADConfFactory(CNF):
         config.PLAD.DATASET.NAME = "PLADCSG2DDataset"
         config.PLAD.DATASET.BAKE_FILE = os.path.join(
             config.DATA_PATH, "plad_bakery.pt")
-        # config.MODEL.LOAD_WEIGHTS = os.path.join(config.MACHINE_DIR, "checkpoints/PretrainTEST/pretrain_model.pt")
-        config.MODEL.LOAD_WEIGHTS = ""# os.path.join(config.MACHINE_DIR, "checkpoints/PretrainTEST/pretrain_model.pt")
+        config.MODEL.LOAD_WEIGHTS = os.path.join(config.MACHINE_DIR, "checkpoints/PretrainTEST/pretrain_model.pt")
         config.DATA_LOADER.SEARCH_BATCH_SIZE = 512
         config.DATA_LOADER.VAL_BATCH_SIZE = 512
         # change train dataset as well:

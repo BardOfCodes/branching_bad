@@ -187,37 +187,44 @@ class BaseTransformer(nn.Module):
         return new_partial_seq
 
     def update_macros(self, embd_selector, add_macros, remove_macros):
-        
+
         # first select from existing macros:
-        cmd_embeddings = self.command_tokens.weight.detach().data
-        selected_embds = []
-        for ind, validity in enumerate(embd_selector):
-            if validity:
-                selected_embds.append(cmd_embeddings[ind])
-                
+
         # 4 for union, intersection, difference, and stop
-        n_cmds = len(selected_embds) + len(add_macros) + 4
+        n_cmds = len(embd_selector) + len(add_macros) + 4
         self.command_token_count = n_cmds
         new_command_tokens = nn.Embedding(
             self.command_token_count, self.attn_size)
         # Learn them new?
-        selected_embds = th.stack(selected_embds, 0)
-        new_command_tokens.weight.data[:len(selected_embds)] = selected_embds
-        new_command_tokens.weight.data[-4:] = cmd_embeddings[-4:]
+        if self.reload_on_dsl_update in [0, 1]:
+            cmd_embeddings = self.command_tokens.weight.detach().data
+            selected_embds = []
+            for ind, validity in enumerate(embd_selector):
+                if validity:
+                    selected_embds.append(cmd_embeddings[ind])
+            selected_embds = th.stack(selected_embds, 0)
+            new_command_tokens.weight.data[:len(
+                selected_embds)] = selected_embds
+            new_command_tokens.weight.data[-4:] = cmd_embeddings[-4:]
+        else:
+            self.param_scale_tokens = nn.Embedding(
+                self.real_param_scale, self.attn_size)
+
+        self.command_tokens = new_command_tokens
+
         # also reset the cmd predictor?
-        if self.reload_on_dsl_update:
-            for param in self.cmd_vector.layers:
-                print(type(param))
-                self.initialize_weights(param)
+        if self.reload_on_dsl_update == 2:
             for param in self.after_attn_process.layers:
                 print(type(param))
                 self.initialize_weights(param)
             for param in self.param_predictor.layers:
                 print(type(param))
                 self.initialize_weights(param)
-        
-        self.command_tokens = new_command_tokens
-        
+        if self.reload_on_dsl_update in [1, 2]:
+            for param in self.cmd_vector.layers:
+                print(type(param))
+                self.initialize_weights(param)
+
     def extend_seq_batch(self, partial_seq, actions_in):
 
         actions_in = actions_in.long()

@@ -33,7 +33,7 @@ class BranchingBAD(NaiveBOOTAD):
         if self.reload_latest:
             self.era, expression_bank = self.load_with_dsl(self.era)
         else:
-            self.era = -1
+            self.era = 0
             expression_bank = None
         while (not outer_loop_saturation):
             # load the data:

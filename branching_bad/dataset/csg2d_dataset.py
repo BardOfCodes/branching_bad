@@ -194,7 +194,7 @@ class CADCSG2DDataset(SynthCSG2DDataset):
 @DatasetRegistry.register("PLADCSG2DDataset")
 class PLADCSG2DDataset(CADCSG2DDataset):
 
-    def __init__(self, config, device, targets, expression_bank):
+    def __init__(self, config, device, targets, expression_bank, *args, **kwargs):
         subset = "train"
         self.targets = targets
         self.epoch_size = len(targets) * 2

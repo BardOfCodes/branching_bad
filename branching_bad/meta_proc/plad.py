@@ -30,6 +30,8 @@ class PLAD(Pretrain):
 
         self.epoch_iters = config.TRAIN.DATASET.EPOCH_SIZE * \
             config.DATA_LOADER.TRAIN_WORKERS // config.DATA_LOADER.TRAIN_BATCH_SIZE * 2
+        # temp
+        self.era = 0
 
     def start_experiment(self, train_expressions=None, cutshort=False):
         # Create the dataloaders:

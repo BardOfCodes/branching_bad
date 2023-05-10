@@ -11,5 +11,5 @@ class BranchingBootConfFactory(CNF):
         
         config = NaiveBootConfFactory(name, machine).config
         config.EXPERIMENT_MODE = "BranchingBAD"
-        config.N_BRANCHES = 2
+        config.N_BRANCHES = 3
         self.config = config

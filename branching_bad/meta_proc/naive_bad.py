@@ -131,6 +131,11 @@ class NaiveBOOTAD(PLAD):
         # save_file = os.path.join(self.save_dir, "dsl_{}.pkl".format(era))
         save_file = os.path.join(self.save_dir, "dsl_0.pkl")
         cPickle.dump(item, open(save_file, "wb"))
+        # just save few things per era:
+        diff_items = [era, self.executor, expression_bank]
+        save_file = os.path.join(self.save_dir, f"dsl_info_{era}.pkl")
+        cPickle.dump(diff_items, open(save_file, "wb"))
+        
         self.model.cuda()
         self._save_model(era)
         self._save_model(era, "best")
