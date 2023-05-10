@@ -78,13 +78,15 @@ class BranchingBAD(NaiveBOOTAD):
             plad_dsl_score = self.get_dsl_scores(expression_bank)
             print("PLAD step increased score from {} to {}".format(
                 original_dsl_score, plad_dsl_score))
+            
+            self.save_with_dsl(self.era, expr_bank)
 
             # saving:
             if self.era % self.n_branches == (self.n_branches - 1):
                 # compare all the k branches
                 dsl_scores = []
                 for ind in range(self.n_branches):
-                    self.era, expression_bank = self.load_with_dsl(ind)
+                    _, expression_bank = self.load_with_dsl(ind)
                     new_dsl_score = self.get_dsl_scores(expression_bank)
                     dsl_scores.append(new_dsl_score)
                 # option 2: merge all the k branches up to top 3 cmds
@@ -172,5 +174,5 @@ class BranchingBAD(NaiveBOOTAD):
             self._save_model(epoch, f"best_{self.era}")
             last_improvment_iter = inner_iter
         else:
-            print("New score: ", final_score, " is not better than best score: ", self.best_score)
+            print("New score: ", final_score, " is not better than best score: ", best_score)
         return last_improvment_iter

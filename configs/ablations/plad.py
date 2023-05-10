@@ -20,7 +20,7 @@ class PLADConfFactory(CNF):
 
         config.TRAIN.DATASET.NAME = "CADCSG2DDataset"
         config.TRAIN.DATASET.LOAD_EXTRA = True
-        config.TRAIN.DATASET.EPOCH_SIZE = int(256 * 1000/4)
+        config.TRAIN.DATASET.EPOCH_SIZE = int(256 * 1000/8)
 
         config.PLAD.DATASET = config.TRAIN.DATASET.clone()
         config.PLAD.DATASET.NAME = "PLADCSG2DDataset"
