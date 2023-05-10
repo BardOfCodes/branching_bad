@@ -27,6 +27,8 @@ class BranchingBAD(NaiveBOOTAD):
         # Additional parameters:
         self.n_branches = config.N_BRANCHES
         self.dummy_era = 10000
+        self.best_scores = [-np.inf for x in range(self.n_branches)]
+        self.best_epochs = [0 for x in range(self.n_branches)]
 
     def start_experiment(self,):
         outer_loop_saturation = False
@@ -156,3 +158,18 @@ class BranchingBAD(NaiveBOOTAD):
         new_expression_bank_set, add_macros_set = self.abstraction_crafter.craft_branching_abstractions(
             expression_bank, era, executor, self.n_branches)
         return new_expression_bank_set, add_macros_set
+
+    def compare_to_best(self, outer_iter, epoch, inner_iter, final_metrics):
+        final_score = final_metrics["score"]
+        index = self.era%self.n_branches
+        best_score = self.best_scores[index]
+        if final_score > best_score + self.score_tolerance:
+            print("New best score: ", final_score)
+            self.best_scores[index] = final_score
+            self.best_epochs[index] = epoch
+            self.best_outer_iter = outer_iter
+            self._save_model(epoch, f"best_{self.era}")
+            last_improvment_iter = inner_iter
+        else:
+            print("New score: ", final_score, " is not better than best score: ", self.best_score)
+        return last_improvment_iter

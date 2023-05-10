@@ -14,7 +14,7 @@ python scripts/trainer.py --config-file configs/ablations/plad.py --machine CCV 
 Branching factor and New expr
 
 ```bash
-python scripts/trainer.py --config-file configs/ablations/branching_boot.py --machine CCV --name BranchingBADBFactor5 --cfg.N_BRANCHES 1 --cfg.NOTIFICATION.ENABLE True
+python scripts/trainer.py --config-file configs/ablations/branching_boot.py --machine CCV --name BranchingBADBFactor5 --cfg.N_BRANCHES 5 --cfg.NOTIFICATION.ENABLE True
 python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name NaiveBADNewExpr1 --cfg.ABSTRACTION.CS_SPLICER.MACRO_PER_ERA 1 --cfg.NOTIFICATION.ENABLE True
 python scripts/trainer.py --config-file configs/ablations/naive_boot.py --machine CCV --name NaiveBADNewExpr5 --cfg.ABSTRACTION.CS_SPLICER.MACRO_PER_ERA 5 --cfg.NOTIFICATION.ENABLE True
 ```
