@@ -1,4 +1,5 @@
 
+import numpy as np
 import torch.nn as nn
 import torch as th
 import torch.nn.functional as F
@@ -191,7 +192,7 @@ class BaseTransformer(nn.Module):
         # first select from existing macros:
 
         # 4 for union, intersection, difference, and stop
-        n_cmds = len(embd_selector) + len(add_macros) + 4
+        n_cmds = np.sum(embd_selector) + len(add_macros) + 4
         self.command_token_count = n_cmds
         new_command_tokens = nn.Embedding(
             self.command_token_count, self.attn_size)
