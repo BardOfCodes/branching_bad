@@ -117,7 +117,7 @@ class PLAD(Pretrain):
 
             final_metrics = stat_estimator.get_final_metrics()
             # inner saturation check:
-            last_improvment_iter = self.compare_to_best(outer_iter, epoch, inner_iter, final_metrics)
+            last_improvment_iter = self.compare_to_best(outer_iter, epoch, inner_iter, final_metrics, last_improvment_iter)
                 
             if inner_iter - last_improvment_iter >= self.inner_patience:
                 # hit saturation.
@@ -131,7 +131,7 @@ class PLAD(Pretrain):
             epoch += 1
         return epoch, final_metrics
 
-    def compare_to_best(self, outer_iter, epoch, inner_iter, final_metrics):
+    def compare_to_best(self, outer_iter, epoch, inner_iter, final_metrics, last_improvment_iter):
         final_score = final_metrics["score"]
         if final_score > self.best_score + self.score_tolerance:
             print("New best score: ", final_score)
