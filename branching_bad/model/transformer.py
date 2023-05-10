@@ -208,21 +208,21 @@ class BaseTransformer(nn.Module):
                 selected_embds)] = selected_embds
             new_command_tokens.weight.data[-4:] = cmd_embeddings[-4:]
         else:
-            self.param_scale_tokens = nn.Embedding(
-                self.real_param_scale, self.attn_size)
+            self.param_scale_tokens.weight.data.uniform_(-1, 1)
 
         self.command_tokens = new_command_tokens
 
         # also reset the cmd predictor?
+        if self.reload_on_dsl_update in [1, 2]:
+            for param in self.cmd_vector.layers:
+                print(type(param))
+                self.initialize_weights(param)
+                
         if self.reload_on_dsl_update == 2:
             for param in self.after_attn_process.layers:
                 print(type(param))
                 self.initialize_weights(param)
             for param in self.param_predictor.layers:
-                print(type(param))
-                self.initialize_weights(param)
-        if self.reload_on_dsl_update in [1, 2]:
-            for param in self.cmd_vector.layers:
                 print(type(param))
                 self.initialize_weights(param)
 
