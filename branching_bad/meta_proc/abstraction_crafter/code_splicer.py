@@ -53,9 +53,9 @@ class BootADSplicer(MergeSplicerCache):
         th.cuda.empty_cache()
         # cPickle.dump(subexpr_cache, open("step_2.pkl" ,"wb"))
         # subexpr_cache = cPickle.load(open("step_2.pkl" ,"rb"))
-
+        existing_subexpres = ["".join(x) for x in executor.parser.named_expression.values()]
         merge_spliced_commands, new_macros = self.merge_cache(
-            subexpr_cache, era)
+            subexpr_cache,era, existing_subexpres=existing_subexpres)
 
         # measure the performance with the new commands?
         executor.update_macros(new_macros, remove_macros=[])
@@ -245,7 +245,7 @@ class BootADSplicer(MergeSplicerCache):
 
         return expression_bank
 
-    def merge_cache(self, subexpr_cache, era, device=th.device("cuda"), dtype=th.float32):
+    def merge_cache(self, subexpr_cache, era, existing_subexpres, device=th.device("cuda"), dtype=th.float32):
         # Now from this cache create unique:
 
         avg_length = np.mean([len(x['commands']) for x in subexpr_cache])
@@ -298,16 +298,21 @@ class BootADSplicer(MergeSplicerCache):
             # Now for the rest create a new expression with the replacement
             # measure expected increase in performance:
             expr_to_splice = sel_exprs[min_ind]
-            macro_candidate = {
-                'expr_obj': expr_to_splice,
-                'target_exprs': sel_exprs,
-                'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**self.length_factor * len(sel_exprs)
-                # 'expected_delta': -self.length_tax_rate * len(sel_exprs)
-            }
-            macro_candidates.append(macro_candidate)
+            subexpr = "".join(expr_to_splice['subexpression'])
+            
+            if not subexpr in existing_subexpres:
+                macro_candidate = {
+                    'expr_obj': expr_to_splice,
+                    'target_exprs': sel_exprs,
+                    'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**self.length_factor * len(sel_exprs)
+                    # 'expected_delta': -self.length_tax_rate * len(sel_exprs)
+                }
+                # get existing candidates:
+                
+                macro_candidates.append(macro_candidate)
 
-            compressed_expr = {x: y for x, y in expr_to_splice.items()}
-            selected_subexprs.append(compressed_expr)
+                compressed_expr = {x: y for x, y in expr_to_splice.items()}
+                selected_subexprs.append(compressed_expr)
             for ind in selected_ids:
                 if ind in all_indexes:
                     all_indexes.remove(ind)
@@ -442,8 +447,9 @@ class BootADSplicer(MergeSplicerCache):
         # cPickle.dump(subexpr_cache, open("step_2.pkl" ,"wb"))
         # subexpr_cache = cPickle.load(open("step_2.pkl" ,"rb"))
 
+        existing_subexpres = ["".join(x) for x in executor.parser.named_expression.values()]
         merge_spliced_commands_set, new_macros_set = self.sampled_merge_cache(
-            subexpr_cache, era, n_branches=n_branches)
+            subexpr_cache, era, n_branches=n_branches, existing_subexpres=existing_subexpres)
 
         remove_macros = []
         merge_spliced_expression_bank_set = []
@@ -467,7 +473,7 @@ class BootADSplicer(MergeSplicerCache):
         # get expression_bank from merge_spliced_commands
         return merge_spliced_expression_bank_set, new_macros_set
 
-    def sampled_merge_cache(self, subexpr_cache, era, n_branches=1):
+    def sampled_merge_cache(self, subexpr_cache, era, n_branches=1, existing_subexpres=None):
         # Now from this cache create unique:
 
         avg_length = np.mean([len(x['commands']) for x in subexpr_cache])
@@ -520,16 +526,19 @@ class BootADSplicer(MergeSplicerCache):
             # Now for the rest create a new expression with the replacement
             # measure expected increase in performance:
             expr_to_splice = sel_exprs[min_ind]
-            macro_candidate = {
-                'expr_obj': expr_to_splice,
-                'target_exprs': sel_exprs,
-                'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**self.length_factor * len(sel_exprs)
-                # 'expected_delta': -self.length_tax_rate * len(sel_exprs)
-            }
-            macro_candidates.append(macro_candidate)
+            
+            subexpr = "".join(expr_to_splice['subexpression'])
+            if not subexpr in existing_subexpres:
+                macro_candidate = {
+                    'expr_obj': expr_to_splice,
+                    'target_exprs': sel_exprs,
+                    'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**self.length_factor * len(sel_exprs)
+                    # 'expected_delta': -self.length_tax_rate * len(sel_exprs)
+                }
+                macro_candidates.append(macro_candidate)
 
-            compressed_expr = {x: y for x, y in expr_to_splice.items()}
-            selected_subexprs.append(compressed_expr)
+                compressed_expr = {x: y for x, y in expr_to_splice.items()}
+                selected_subexprs.append(compressed_expr)
             for ind in selected_ids:
                 if ind in all_indexes:
                     all_indexes.remove(ind)
