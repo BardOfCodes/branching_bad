@@ -55,31 +55,8 @@ class NaiveBOOTAD(PLAD):
             expression_bank = None
         while (not outer_loop_saturation):
 
-            original_dsl_score = self.best_dsl_score
-            if self.era != 0:
-                # TODO: Have a clean up step here.
-                expression_bank = self.clean_expression_bank(expression_bank)
-                new_expression_bank, new_macros = self.craft_abstractions(
-                    expression_bank, self.era, self.executor)
-                expression_bank = self.update_expression_banks(
-                    new_expression_bank, expression_bank)
-                # Update all
-                # Measure number of expr with a macro in them:
-                self.log_dsl_details(expression_bank)
-
-                self.update_all_components(new_macros)
-                new_dsl_score = self.get_dsl_scores(expression_bank)
-                
-                
-                print("Abstraction Crafting step increased score from {} to {}".format(
-                    original_dsl_score, new_dsl_score))
-            else:
-                new_dsl_score = original_dsl_score
-
-            # save:
-            if self.era % self.save_freq == 0:
-                self.save_with_dsl(self.era, expression_bank)
             # Do inner loop PLAD
+            original_dsl_score = self.get_dsl_scores(expression_bank)
             cutshort = (self.era == 0)
             expression_bank = super(
                 NaiveBOOTAD, self).start_experiment(expression_bank, cutshort=cutshort)
@@ -88,11 +65,30 @@ class NaiveBOOTAD(PLAD):
             # Perform Merge Splicing on expression bank expressions.
             plad_dsl_score = self.get_dsl_scores(expression_bank)
             print("PLAD step increased score from {} to {}".format(
-                new_dsl_score, plad_dsl_score))
+                original_dsl_score, plad_dsl_score))
 
-            if plad_dsl_score > original_dsl_score + self.dsl_score_tolerance:
+            # TODO: Have a clean up step here.
+            new_expression_bank, add_macros = self.craft_abstractions(
+                expression_bank, self.era, self.executor)
+            expression_bank = self.update_expression_banks(
+                new_expression_bank, expression_bank)
+            # Find macros to remove:
+            expression_bank, remove_macros = self.remove_abstractions(
+                expression_bank, self.executor, add_macros)
+            # Measure number of expr with a macro in them:
+            self.update_all_components(add_macros, remove_macros)
+            self.log_dsl_details(expression_bank)
+            new_dsl_score = self.get_dsl_scores(expression_bank)
+
+            print("Abstraction Crafting step increased score from {} to {}".format(
+                plad_dsl_score, new_dsl_score))
+
+            # save:
+            if self.era % self.save_freq == 0:
+                self.save_with_dsl(self.era, expression_bank)
+            if new_dsl_score > original_dsl_score + self.dsl_score_tolerance:
                 self.best_dsl_era = self.era
-                self.best_dsl_score = plad_dsl_score
+                self.best_dsl_score = new_dsl_score
 
             # outer saturation check:
             if self.era - self.best_dsl_era >= self.dsl_patience:
@@ -124,7 +120,7 @@ class NaiveBOOTAD(PLAD):
         expression_stats = stat_estimator.get_expression_stats()
         self.logger.log_statistics(
             expression_stats, self.era, prefix="post-abstraction-expr")
-        
+
         self.executor.parser.describe_all_macros()
 
     def save_with_dsl(self, era, expression_bank):
@@ -156,46 +152,61 @@ class NaiveBOOTAD(PLAD):
             era, self.executor, self.model_translator, model_weights, expression_bank = item
 
             self.model.cpu()
-            # HACK
-            all_cmds = self.executor.get_cmd_list()
-            self.model.update_cmds(all_cmds)
             self.model.load_state_dict(model_weights)
             self.model.cuda()
+            all_cmds = self.executor.get_cmd_list()
+            self.num_commands = len(all_cmds)
         else:
             era = 0
             expression_bank = None
         return era, expression_bank
 
+    def remove_abstractions(self, expression_bank, executor, add_macros):
+
+        new_expression_bank, remove_macros = self.abstraction_crafter.remove_abstractions(
+            expression_bank, executor, add_macros)
+        return new_expression_bank, remove_macros
+
     def craft_abstractions(self, expression_bank, era, executor):
 
-        new_expression_bank, new_macros = self.abstraction_crafter.craft_abstractions(
+        new_expression_bank, add_macros = self.abstraction_crafter.craft_abstractions(
             expression_bank, era, executor)
-        return new_expression_bank, new_macros
+        return new_expression_bank, add_macros
 
     def get_dsl_scores(self, expression_bank):
         # Get DSL Size
+        if expression_bank is None:
+            return -np.inf
         dsl_size = self.executor.get_dsl_size()
         # avg_task_score = [x['score'] for x in expression_bank]
-        avg_task_score = [x['iou'] + self.abstraction_crafter.length_tax_rate *
-                          len(x['expression']) for x in expression_bank]
-        avg_task_score = np.nanmean(avg_task_score)
+        # I think this should be with only the "best"
+        avg_task_scores = dict()
+        for expr in expression_bank:
+            score = expr['iou'] + self.abstraction_crafter.length_tax_rate * \
+                len(expr['expression'])
+            index = expr['target_index']
+            if index not in avg_task_scores.keys():
+                avg_task_scores[index] = score
+            else:
+                avg_task_scores[index] = max(avg_task_scores[index], score)
+        for i in range(10000):
+            if i not in avg_task_scores.keys():
+                avg_task_scores[i] = 0
+        avg_task_score = np.nanmean(list(avg_task_scores.values()))
 
         overall_score = self.dsl_weight * dsl_size + self.task_weight * avg_task_score
 
         return overall_score
 
-    def clean_expression_bank(self, expression_bank):
-        return expression_bank
+    def update_all_components(self, add_macros, remove_macros=None):
 
-    def update_all_components(self, new_macros):
+        self.executor.update_macros(add_macros, remove_macros)
+        embd_selection = self.model_translator.update_macros(
+            add_macros, remove_macros)
 
-        self.executor.update_macros(new_macros)
-        self.model_translator.update_macros(new_macros)
-
+        self.model.update_macros(embd_selection, add_macros, remove_macros)
         all_cmds = self.executor.get_cmd_list()
-        self.model.update_cmds(all_cmds)
         self.num_commands = len(all_cmds)
-        self.optimizer  # Not required?
 
         # update class weightage:
         # all_cmds = self.executor.parser.get_cmd_list()
@@ -207,41 +218,7 @@ class NaiveBOOTAD(PLAD):
         #     else:
         #         class_weights.append(1.0)
         # class_weights = th.from_numpy(np.array(class_weights)).float().cuda()
-
         # self.cmd_nllloss = th.nn.NLLLoss(reduce=False, weight=class_weights)
-
-    def generate_training_dataset(self, epoch, original_train_loader, previous_training_dataset=None):
-
-        print("Generating training dataset...")
-        stat_estimator = self._evaluate(epoch, original_train_loader, prefix="search",
-                                        executor=self.executor,
-                                        model_translator=self.model_translator)
-        if not previous_training_dataset is None:
-            new_expression_bank = []
-            all_expression_bank = defaultdict(list)
-            prev_exprs = previous_training_dataset.expression_bank
-            new_exprs = stat_estimator.expression_bank
-            for cur_expr in prev_exprs:
-                target_index = cur_expr['target_index']
-                all_expression_bank[target_index].append(cur_expr)
-            for cur_expr in new_exprs:
-                target_index = cur_expr['target_index']
-                all_expression_bank[target_index].append(cur_expr)
-            for target_index in all_expression_bank:
-                cur_exprs = all_expression_bank[target_index]
-                cur_exprs.sort(key=lambda x: x['score'], reverse=True)
-                selected_exprs = cur_exprs[:self.n_expr_per_entry]
-                new_expression_bank.extend(selected_exprs)
-        else:
-            new_expression_bank = stat_estimator.expression_bank
-
-        training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
-                                                       device=self.train_dataset.device,
-                                                       targets=self.train_dataset.targets,
-                                                       expression_bank=new_expression_bank,
-                                                       executor=self.executor,
-                                                       model_translator=self.model_translator,)
-        return training_dataset
 
     def log_statistics(self, outer_iter, inner_iter, output, actions, action_validity, n_actions, loss_obj, epoch, iter_ind):
         duration_statistics = {

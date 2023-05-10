@@ -13,8 +13,9 @@ from CSG.bc_trainers.rewrite_engines.subexpr_cache import MergeSplicerCache
 
 MAX_SIZE = int(100000)
 
+
 class ModGraphicalMCSG2DCompiler(GraphicalMCSG2DCompiler):
-    
+
     def cmd_to_expression(self, commands):
         expression_list = []
         for cmd in commands:
@@ -22,7 +23,7 @@ class ModGraphicalMCSG2DCompiler(GraphicalMCSG2DCompiler):
                 expression = cmd['true_expression']
                 expression_list.append(expression)
         return expression_list
-        
+
 
 class BootADSplicer(MergeSplicerCache):
 
@@ -33,11 +34,14 @@ class BootADSplicer(MergeSplicerCache):
         self.merge_bit_distance = config.MERGE_BIT_DISTANCE
         self.max_new_percentage = config.MAX_NEW_PERCENTAGE
         self.existing_macros = existing_macros
+        self.length_factor = config.LENGTH_FACTOR
 
     def generate_cache_and_index(self, best_program_dict, temp_env, executor, era):
-        total_expressions = np.sum([len(v) for v in best_program_dict.values()])
-        total_required_expressions = int(self.max_new_percentage * total_expressions)
-        
+        total_expressions = np.sum([len(v)
+                                   for v in best_program_dict.values()])
+        total_required_expressions = int(
+            self.max_new_percentage * total_expressions)
+
         subexpr_cache = self.generate_subexpr_cache(
             best_program_dict, temp_env, executor)
         # cPickle.dump(subexpr_cache, open("step_1.pkl" ,"wb"))
@@ -54,23 +58,23 @@ class BootADSplicer(MergeSplicerCache):
             subexpr_cache, era)
 
         # measure the performance with the new commands?
-        executor.update_macros(new_macros)
+        executor.update_macros(new_macros, remove_macros=[])
 
         merge_spliced_expression_bank = self.annotate_and_convert(
             merge_spliced_commands, temp_env, executor)
-        
+
         # generate extra samples for each expression.
         # OPTION 1: Try to splice the new macros into other expressions.
         n_new_required = total_required_expressions
         # Option 2: Brute force macro through all possible positions.
-        additional_expressions = self.brute_force_macro_use(best_program_dict, new_macros, temp_env, executor, n_new_required=n_new_required)
-        
+        additional_expressions = self.brute_force_macro_use(
+            best_program_dict, new_macros, temp_env, executor, n_new_required=n_new_required)
+
         # OPTION 2: Generate random samples with the new macros.
         merge_spliced_expression_bank.extend(additional_expressions)
 
         # get expression_bank from merge_spliced_commands
         return merge_spliced_expression_bank, new_macros
-
 
     def brute_force_macro_use(self, best_program_dict, new_macros, temp_env, executor, max_count=2, n_new_required=1000):
         print("Collecting Subexpressions")
@@ -79,8 +83,8 @@ class BootADSplicer(MergeSplicerCache):
         # base_parser = temp_env.program_generator.parser
         base_parser = executor.parser
         graph_compiler = ModGraphicalMCSG2DCompiler(resolution=temp_env.program_generator.compiler.resolution,
-                                                 scale=temp_env.program_generator.compiler.scale,
-                                                 draw_mode=temp_env.program_generator.compiler.draw.mode)
+                                                    scale=temp_env.program_generator.compiler.scale,
+                                                    draw_mode=temp_env.program_generator.compiler.draw.mode)
 
         graph_compiler.set_to_cuda()
         graph_compiler.set_to_half()
@@ -111,13 +115,14 @@ class BootADSplicer(MergeSplicerCache):
 
             values = best_program_dict[key]
             new_expressions = []
-            
+
             for cur_value in values:
                 expression = cur_value['expression']
                 with th.no_grad():
                     # with th.cuda.amp.autocast():
                     # Annotate the marco here.
-                    command_list, _ = base_parser.parse_for_graph(expression, adjust_param=False)
+                    command_list, _ = base_parser.parse_for_graph(
+                        expression, adjust_param=False)
                     # command_list = base_parser.parse(expression)
                     graph = graph_compiler.command_tree(
                         command_list, None, enable_subexpr_targets=False, add_splicing_info=True)
@@ -129,7 +134,7 @@ class BootADSplicer(MergeSplicerCache):
                     if add:
                         # substitute the macro instead of the node.
                         # if the macro matches the node canonical target better.
-                         
+
                         cmd_list = command_list
                         old_command_ids = node['subexpr_info']['command_ids']
                         # node['subexpr_info']['command_ids']
@@ -140,7 +145,8 @@ class BootADSplicer(MergeSplicerCache):
                                 old_canonical_commands)
                             new_command_list = cmd_list[:cmd_start] + \
                                 new_transform_chaim + cmd_list[cmd_end:]
-                            expression = base_parser.get_expression(new_command_list)
+                            expression = base_parser.get_expression(
+                                new_command_list)
                             new_expressions.append(expression)
                         counter += 1
             # New compute the new expressions?
@@ -151,27 +157,30 @@ class BootADSplicer(MergeSplicerCache):
                 # print("previous expression length", max(old_lens))
                 # if max(new_expr_len) > max(old_lens):
                 #     print("WT?")
-                
+
                 previous_reward = cur_value['reward']
                 slot_id = cur_value['slot_id']
                 target_id = cur_value['target_id']
                 target_np, _ = temp_env.program_generator.get_executed_program(
                     slot_id, target_id)
                 target = th.from_numpy(target_np).cuda().bool().unsqueeze(0)
-                pred_canvases = executor.eval_batch_execute([new_expressions])[0]
+                pred_canvases = executor.eval_batch_execute([new_expressions])[
+                    0]
                 pred_canvases = pred_canvases.bool()
                 target = target.expand(pred_canvases.shape[0], -1, -1)
                 # max 2 per expression:
-                new_rewards = th.logical_and(pred_canvases, target).sum(1).sum(1)/th.logical_or(pred_canvases, target).sum(1).sum(1)
+                new_rewards = th.logical_and(pred_canvases, target).sum(1).sum(
+                    1)/th.logical_or(pred_canvases, target).sum(1).sum(1)
                 # bulk execute the new expressions.
-                
+
                 value, index = th.topk(new_rewards, k=max_count)
-                
+
                 for ind, index in enumerate(index):
                     if value[ind] >= (previous_reward - self.length_tax_rate * len(expression)):
                         cur_expression = new_expressions[index]
                         new_iou = value[ind].item()
-                        new_score = new_iou + self.length_tax_rate * len(cur_expression)
+                        new_score = new_iou + \
+                            self.length_tax_rate * len(cur_expression)
                         new_score = new_score
                         expr_obj = dict(expression=cur_expression,
                                         score=new_score, iou=new_iou, target_index=target_id)
@@ -179,9 +188,9 @@ class BootADSplicer(MergeSplicerCache):
                         score_delta = new_score - previous_reward
                         score_deltas.append(score_delta)
                         add_counter += 1
-            # if add_counter > n_new_required:
-            #     print(f"Added {add_counter} new expressions. Stoping search")
-            #     break
+            if add_counter > n_new_required:
+                print(f"Added {add_counter} new expressions. Stoping search")
+                break
         new_expression_bank.sort(key=lambda x: x['score'], reverse=True)
         new_expression_bank = new_expression_bank[:n_new_required]
         et = time.time()
@@ -190,7 +199,6 @@ class BootADSplicer(MergeSplicerCache):
         print("Accepted %d new expressions with macros" % add_counter)
         print("Average score delta", np.mean(score_deltas))
         return new_expression_bank
-
 
     def annotate_and_convert(self, merge_spliced_commands, temp_env, executor):
 
@@ -231,7 +239,7 @@ class BootADSplicer(MergeSplicerCache):
             expression_bank.append(expr_obj)
             # note delta in performance
             deltas.append(new_score - old_score)
-        
+
         print("Average delta in performance = %f" % np.mean(deltas))
         print("number of new expressions in bank = %d" % len(expression_bank))
 
@@ -293,7 +301,7 @@ class BootADSplicer(MergeSplicerCache):
             macro_candidate = {
                 'expr_obj': expr_to_splice,
                 'target_exprs': sel_exprs,
-                'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**0.25 * len(sel_exprs)
+                'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**self.length_factor * len(sel_exprs)
                 # 'expected_delta': -self.length_tax_rate * len(sel_exprs)
             }
             macro_candidates.append(macro_candidate)
@@ -314,7 +322,8 @@ class BootADSplicer(MergeSplicerCache):
             expr_to_splice = candidate['expr_obj']
             sel_exprs = candidate['target_exprs']
             subexpression = expr_to_splice['subexpression']
-            new_macro = Macro(expr_to_splice, era, candidate_ind, subexpression)
+            new_macro = Macro(expr_to_splice, era,
+                              candidate_ind, subexpression)
 
             for ind, expr in enumerate(sel_exprs):
                 if "all_commands" in expr.keys():
@@ -348,8 +357,8 @@ class BootADSplicer(MergeSplicerCache):
         # base_parser = temp_env.program_generator.parser
         base_parser = executor.parser
         graph_compiler = ModGraphicalMCSG2DCompiler(resolution=temp_env.program_generator.compiler.resolution,
-                                                 scale=temp_env.program_generator.compiler.scale,
-                                                 draw_mode=temp_env.program_generator.compiler.draw.mode)
+                                                    scale=temp_env.program_generator.compiler.scale,
+                                                    draw_mode=temp_env.program_generator.compiler.draw.mode)
 
         graph_compiler.set_to_cuda()
         graph_compiler.set_to_half()
@@ -381,7 +390,8 @@ class BootADSplicer(MergeSplicerCache):
                 with th.no_grad():
                     # with th.cuda.amp.autocast():
                     # Annotate the marco here.
-                    command_list, _ = base_parser.parse_for_graph(expression, adjust_param=False)
+                    command_list, _ = base_parser.parse_for_graph(
+                        expression, adjust_param=False)
                     # command_list = base_parser.parse(expression)
                     graph = graph_compiler.command_tree(
                         command_list, None, enable_subexpr_targets=False, add_splicing_info=True)
@@ -392,7 +402,8 @@ class BootADSplicer(MergeSplicerCache):
                     if add:
                         # start, end = node['subexpr_info']['command_ids']
                         sub_cmds = node['subexpr_info']['commands']
-                        subexpression = graph_compiler.cmd_to_expression(sub_cmds)
+                        subexpression = graph_compiler.cmd_to_expression(
+                            sub_cmds)
                         shape = node['subexpr_info']['canonical_shape']
                         node_item = {'canonical_shape': shape,
                                      'commands': node['subexpr_info']['commands'],
@@ -411,6 +422,165 @@ class BootADSplicer(MergeSplicerCache):
         print("Subexpr Discovery Time", et - st)
         print("found %d sub-expressions" % counter)
         return subexpr_cache
+
+    def branching_abstraction(self, best_program_dict, temp_env, executor, era, n_branches):
+
+        total_expressions = np.sum([len(v)
+                                   for v in best_program_dict.values()])
+        total_required_expressions = int(
+            self.max_new_percentage * total_expressions)
+
+        subexpr_cache = self.generate_subexpr_cache(
+            best_program_dict, temp_env, executor)
+        # cPickle.dump(subexpr_cache, open("step_1.pkl" ,"wb"))
+        # subexpr_cache = cPickle.load(open("step_1.pkl" ,"rb"))
+        if len(subexpr_cache) > MAX_SIZE:
+            subexpr_cache = random.sample(subexpr_cache, MAX_SIZE)
+        # Setting some primitives
+        print("Number of subexpressions in cache = %d" % len(subexpr_cache))
+        th.cuda.empty_cache()
+        # cPickle.dump(subexpr_cache, open("step_2.pkl" ,"wb"))
+        # subexpr_cache = cPickle.load(open("step_2.pkl" ,"rb"))
+
+        merge_spliced_commands_set, new_macros_set = self.sampled_merge_cache(
+            subexpr_cache, era, n_branches=n_branches)
+
+        remove_macros = []
+        merge_spliced_expression_bank_set = []
+        for ind, new_macros in enumerate(new_macros_set):
+            cur_merge_spliced_commands = merge_spliced_commands_set[ind]
+            executor.update_macros(new_macros, remove_macros=remove_macros)
+            merge_spliced_expression_bank = self.annotate_and_convert(
+                cur_merge_spliced_commands, temp_env, executor)
+            # generate extra samples for each expression.
+            # OPTION 1: Try to splice the new macros into other expressions.
+            n_new_required = total_required_expressions
+            # Option 2: Brute force macro through all possible positions.
+            additional_expressions = self.brute_force_macro_use(
+                best_program_dict, new_macros, temp_env, executor, n_new_required=n_new_required)
+            # OPTION 2: Generate random samples with the new macros.
+            merge_spliced_expression_bank.extend(additional_expressions)
+            merge_spliced_expression_bank_set.append(
+                merge_spliced_expression_bank)
+            remove_macros = new_macros
+
+        # get expression_bank from merge_spliced_commands
+        return merge_spliced_expression_bank_set, new_macros_set
+
+    def sampled_merge_cache(self, subexpr_cache, era, n_branches=1):
+        # Now from this cache create unique:
+
+        avg_length = np.mean([len(x['commands']) for x in subexpr_cache])
+        print("Starting merge with  %d sub-expressions with avg. length %f" %
+              (len(subexpr_cache), avg_length))
+
+        st = time.time()
+        cached_expression_shapes = [
+            x['canonical_shape'].reshape(-1) for x in subexpr_cache]
+        cached_expression_shapes = th.stack(cached_expression_shapes, 0)
+        # cached_expression_shapes.shape
+        cached_np = cached_expression_shapes.cpu().data.numpy()
+        chached_np_packed = np.packbits(cached_np, axis=-1, bitorder="little")
+
+        self.cache_d = cached_expression_shapes.shape[1]
+        merge_nb = cached_expression_shapes.shape[0]
+        # Initializing index.
+        quantizer = faiss.IndexBinaryFlat(self.cache_d)  # the other index
+
+        index = faiss.IndexBinaryIVF(quantizer, self.cache_d, self.merge_nlist)
+        assert not index.is_trained
+        index.train(chached_np_packed)
+        assert index.is_trained
+        index.add(chached_np_packed)
+        index.nprobe = self.merge_nprobe
+        lims, D, I = index.range_search(
+            chached_np_packed, self.merge_bit_distance)
+        lims_shifted = np.zeros(lims.shape)
+        lims_shifted[1:] = lims[:-1]
+
+        all_indexes = set(list(range(merge_nb)))
+
+        # Which abstractions to make?
+        # mark the conversions by the delta in reward.
+        macro_candidates = []
+        all_indexes = set(list(range(merge_nb)))
+        selected_subexprs = []
+        while (len(all_indexes) > 0):
+            cur_ind = next(iter(all_indexes))
+            sel_lims = (lims[cur_ind], lims[cur_ind+1])
+            selected_ids = I[sel_lims[0]:sel_lims[1]]
+            sel_exprs = [subexpr_cache[x] for x in selected_ids]
+            min_len = np.inf
+            for ind, expr in enumerate(sel_exprs):
+                # TODO: Measure the length of the true expression
+                cur_len = len(expr['subexpression'])
+                if cur_len < min_len:
+                    min_len = cur_len
+                    min_ind = ind
+            # Now for the rest create a new expression with the replacement
+            # measure expected increase in performance:
+            expr_to_splice = sel_exprs[min_ind]
+            macro_candidate = {
+                'expr_obj': expr_to_splice,
+                'target_exprs': sel_exprs,
+                'expected_delta': -self.length_tax_rate * (max(0, len(expr_to_splice['subexpression']) - 1))**self.length_factor * len(sel_exprs)
+                # 'expected_delta': -self.length_tax_rate * len(sel_exprs)
+            }
+            macro_candidates.append(macro_candidate)
+
+            compressed_expr = {x: y for x, y in expr_to_splice.items()}
+            selected_subexprs.append(compressed_expr)
+            for ind in selected_ids:
+                if ind in all_indexes:
+                    all_indexes.remove(ind)
+        # Get the best expressions to replace:
+        total_candidates = self.merge_max_candidates * n_branches
+        macro_candidates.sort(key=lambda x: x['expected_delta'], reverse=True)
+        selected_candidates = macro_candidates[:total_candidates]
+
+        random_subsets = random.sample(
+            range(total_candidates), total_candidates)
+
+        merge_spliced_commands_set = []
+        new_macros_set = []
+        for ind in range(n_branches):
+            # create the new macros:
+            merge_spliced_commands = []
+            new_macros = []
+            sel_index = random_subsets[ind * self.merge_max_candidates: (
+                ind + 1) * self.merge_max_candidates]
+            cur_candidates = [selected_candidates[x] for x in sel_index]
+            for candidate_ind, candidate in enumerate(cur_candidates):
+                expr_to_splice = candidate['expr_obj']
+                sel_exprs = candidate['target_exprs']
+                subexpression = expr_to_splice['subexpression']
+                new_macro = Macro(expr_to_splice, era,
+                                  candidate_ind, subexpression)
+
+                for ind, expr in enumerate(sel_exprs):
+                    if "all_commands" in expr.keys():
+                        # replace the other command with the macro
+                        cmd_list = expr['all_commands']
+                        old_command_ids = expr['command_ids']
+                        # node['subexpr_info']['command_ids']
+                        cmd_start, cmd_end = old_command_ids
+                        old_reward = expr['reward']
+                        old_canonical_commands = expr['canonical_commands']
+                        new_transform_chaim = new_macro.resolve_param_chain(
+                            old_canonical_commands)
+                        new_command_list = cmd_list[:cmd_start] + \
+                            new_transform_chaim + cmd_list[cmd_end:]
+                        merge_spliced_commands.append([expr['slot_id'], expr['target_id'],
+                                                       new_command_list, old_reward])
+                    else:
+                        print("WUT")
+                new_macros.append(new_macro)
+            merge_spliced_commands_set.append(merge_spliced_commands)
+            new_macros_set.append(new_macros)
+
+        et = time.time()
+        print("Merge Process Time", et - st)
+        return merge_spliced_commands_set, new_macros_set
 
 
 def get_new_command(command_list, command_inds, prev_canonical_commands,

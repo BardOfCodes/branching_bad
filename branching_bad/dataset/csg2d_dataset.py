@@ -166,6 +166,7 @@ class CADCSG2DDataset(SynthCSG2DDataset):
         if self.subset == "train":
             data = np.array(hf.get(name="%s_images" % "train"))
         elif self.subset == "val":
+            # data = np.array(hf.get(name="%s_images" % "train"))
             data = np.array(hf.get(name="%s_images" % "val"))
         elif self.subset == "test":
             data = np.array(hf.get(name="%s_images" % "test"))

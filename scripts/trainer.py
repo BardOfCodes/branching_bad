@@ -25,7 +25,7 @@ def main():
     sys.path.insert(0, config.SIRI_PATH)
     sketch_builder = SketchBuilder()
     sketch_builder.render_stack_sketch(G, stacking="vertical")
-    Path(save_file).mkdir(parents=True, exist_ok=True)
+    Path(config.LOGGER.LOG_DIR).mkdir(parents=True, exist_ok=True)
     sketch_builder.export_to_file(save_path=save_file)
     del sketch_builder
 

@@ -136,21 +136,33 @@ class GenNNInterpreter:
 class MacroNNInterpreter(GenNNInterpreter):
     
     
-    def update_macros(self, macro_dicts):
+    def update_macros(self, add_macros, remove_macros):
         
         new_cmd_dict = {}
-        for cmd, value in self.command_index.items():
+        selection_array = []
+        remove_macro_names = [x.name for x in remove_macros]
+        counter = 0
+        n_old_cmds = len(self.index_to_expr.keys())
+        for index in range(n_old_cmds):
+            cmd = self.index_to_expr[index]
             if cmd in self.draw_commands:
-                if isinstance(value, np.ndarray):
-                    value = value[0]
-                new_cmd_dict[cmd] = value
+                # add only if not in remove macros
+                if cmd in remove_macro_names:
+                    self.draw_commands.remove(cmd)
+                    del self.expr_to_n_params[cmd]
+                    selection_array.append(0)
+                else:
+                    new_cmd_dict[cmd] = counter
+                    counter += 1
+                    selection_array.append(1)
         
         n_commands = len(new_cmd_dict)
-        for ind, macro in enumerate(macro_dicts):
+        for ind, macro in enumerate(add_macros):
             name = macro.name
             new_cmd_dict[name] = n_commands + ind
             self.expr_to_n_params[name] = 5# macro['n_params']
             self.draw_commands.append(name)
+        
         
         n_macros = len(new_cmd_dict)
         update_dict = {
@@ -166,4 +178,6 @@ class MacroNNInterpreter(GenNNInterpreter):
         self.command_index = new_cmd_dict
         for key, value in self.command_index.items():
             self.command_index[key] = np.array([value], dtype=np.int32)
+    
+        return selection_array
             

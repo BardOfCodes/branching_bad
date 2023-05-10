@@ -45,21 +45,20 @@ class PLAD(Pretrain):
         outer_loop_saturation = False
         outer_iter = 0
         epoch = 0
-        training_dataset = None
+        if train_expressions is not None:
+            training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
+                                                            device=self.train_dataset.device,
+                                                            targets=self.train_dataset.targets,
+                                                            expression_bank=train_expressions,
+                                                            executor=self.executor,
+                                                            model_translator=self.model_translator,)
+        else:
+            training_dataset = None
         while (not outer_loop_saturation):
             # Search for good programs:
-
             self.model.eval()
-            if outer_iter == 0 and train_expressions is not None:
-                training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
-                                                               device=self.train_dataset.device,
-                                                               targets=self.train_dataset.targets,
-                                                               expression_bank=train_expressions,
-                                                               executor=self.executor,
-                                                               model_translator=self.model_translator,)
-            else:
-                training_dataset = self.generate_training_dataset(
-                    epoch, original_train_loader, training_dataset)
+            training_dataset = self.generate_training_dataset(
+                epoch, original_train_loader, training_dataset)
 
             # Create data loaders:
             # NOTE: PLAD dataset loader returns 2x the batch size, hence reducing batch size.
@@ -73,7 +72,7 @@ class PLAD(Pretrain):
             epoch, _ = self.inner_loop(
                 outer_iter, epoch, train_loader, val_loader)
             # Load previous best weights?
-            self.load_weights(file_name="best")
+            # self.load_weights(file_name="best")
             new_best = self.best_score
             print("Inner loop increased score from {} to {}".format(
                 previous_best, new_best))
@@ -141,27 +140,35 @@ class PLAD(Pretrain):
 
     def generate_training_dataset(self, epoch, original_train_loader, previous_training_dataset=None):
 
-        # Do beam search on the training set:
         print("Generating training dataset...")
-        stat_estimator = self._evaluate(
-            epoch, original_train_loader, prefix="search",
-            executor=self.executor, model_translator=self.model_translator)
-        # cPickle.dump(stat_estimator, open("tmp.pkl", "wb"))
-        # stat_estimator = cPickle.load(open("tmp.pkl", "rb"))
-        # Now from expressions and corresponding canvases create the new dataset:
+        stat_estimator = self._evaluate(epoch, original_train_loader, prefix="search",
+                                        executor=self.executor,
+                                        model_translator=self.model_translator)
         if not previous_training_dataset is None:
+            new_expression_bank = []
+            all_expression_bank = defaultdict(list)
             prev_exprs = previous_training_dataset.expression_bank
             new_exprs = stat_estimator.expression_bank
-            new_expression_bank = self.update_expression_banks(
-                new_exprs, prev_exprs)
+            for cur_expr in prev_exprs:
+                target_index = cur_expr['target_index']
+                all_expression_bank[target_index].append(cur_expr)
+            for cur_expr in new_exprs:
+                target_index = cur_expr['target_index']
+                all_expression_bank[target_index].append(cur_expr)
+            for target_index in all_expression_bank:
+                cur_exprs = all_expression_bank[target_index]
+                cur_exprs.sort(key=lambda x: x['score'], reverse=True)
+                selected_exprs = cur_exprs[:self.n_expr_per_entry]
+                new_expression_bank.extend(selected_exprs)
         else:
-            # TODO: Limit the number of selections here.
             new_expression_bank = stat_estimator.expression_bank
 
         training_dataset = DatasetRegistry.get_dataset(self.dataset_config,
                                                        device=self.train_dataset.device,
                                                        targets=self.train_dataset.targets,
-                                                       expression_bank=new_expression_bank)
+                                                       expression_bank=new_expression_bank,
+                                                       executor=self.executor,
+                                                       model_translator=self.model_translator,)
         return training_dataset
 
     def update_expression_banks(self, new_expression_bank, prev_expression_bank):

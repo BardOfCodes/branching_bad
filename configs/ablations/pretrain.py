@@ -50,7 +50,7 @@ class PretrainConfFactory(CNF):
 
         config.OBJECTIVE = CN()
         # Note: This is used with score, so inverse sign.
-        config.OBJECTIVE.LENGTH_TAX = - 0.01
+        config.OBJECTIVE.LENGTH_TAX = - 0.005
         config.OBJECTIVE.CMD_ENTROPY_COEF =  - 1e-2
         config.OBJECTIVE.PARAM_ENTROPY_COEF =  - 1e-2
         config.OBJECTIVE.WEIGHT_DECAY_COEF = 1e-5

@@ -94,8 +94,8 @@ class MacroExecutor(CSG2DExecutor):
         self.parser = MacroParser(device)
         self.compiler = CSG2DCompiler(self.resolution, device)
 
-    def update_macros(self, macro_dict):
-        self.parser.update_macros(macro_dict)
+    def update_macros(self, add_macros, remove_macros):
+        self.parser.update_macros(add_macros, remove_macros)
 
     def get_dsl_size(self):
         return self.parser.get_dsl_size()

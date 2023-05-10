@@ -186,14 +186,24 @@ class BaseTransformer(nn.Module):
         new_partial_seq = th.cat((partial_seq, cmd_token_embeddings), dim=0)
         return new_partial_seq
 
-    def update_cmds(self, cmds):
+    def update_macros(self, embd_selector, add_macros, remove_macros):
         
-        self.command_token_count = len(cmds)
+        # first select from existing macros:
+        cmd_embeddings = self.command_tokens.weight.detach().data
+        selected_embds = []
+        for ind, validity in enumerate(embd_selector):
+            if validity:
+                selected_embds.append(cmd_embeddings[ind])
+                
+        # 4 for union, intersection, difference, and stop
+        n_cmds = len(selected_embds) + len(add_macros) + 4
+        self.command_token_count = n_cmds
         new_command_tokens = nn.Embedding(
             self.command_token_count, self.attn_size)
         # Learn them new?
-        prev_n_cmds = self.command_tokens.num_embeddings
-        new_command_tokens.weight[:prev_n_cmds].data = self.command_tokens.weight.detach().data
+        selected_embds = th.stack(selected_embds, 0)
+        new_command_tokens.weight.data[:len(selected_embds)] = selected_embds
+        new_command_tokens.weight.data[-4:] = cmd_embeddings[-4:]
         # also reset the cmd predictor?
         if self.reload_on_dsl_update:
             for param in self.cmd_vector.layers:

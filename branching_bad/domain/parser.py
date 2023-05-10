@@ -1,3 +1,4 @@
+import copy
 import math
 from collections import defaultdict
 import numpy as np
@@ -93,11 +94,22 @@ class MacroParser(CSG2DParser):
         self.macro_extension_dict = {}
         self.fcsg_mode = True
         self.named_expression = {}
+        self.deprecated_cmds = {}
 
-    def update_macros(self, macro_dicts):
+    def update_macros(self, add_macros, remove_macros):
         # remove the existing "novel cmds"
         self.novel_cmds = []
-        for macro in macro_dicts:
+        # remove:
+        for macro in remove_macros:
+            name = macro.name
+            assert name in self.named_expression.keys()
+            self.deprecated_cmds[name] = copy.copy(self.named_expression[name])
+            del self.named_expression[name]
+            del self.command_n_param[name]
+            del self.command_symbol_to_type[name]
+            del self.macro_extension_dict[name]
+            # self.novel_cmds.remove(name)
+        for macro in add_macros:
             # expression = self.get_expression(macro.commands, clip=True,
             #                                  quantize=True, resolution=33)
             expression = macro.subexpression
@@ -107,6 +119,8 @@ class MacroParser(CSG2DParser):
             self.command_symbol_to_type[name] = "M"
             self.macro_extension_dict[name] = expression
             self.novel_cmds.append(name)
+            
+        
 
     def parse(self, expression_list, adjust_param=True, use_torch=False):
         command_list = []
