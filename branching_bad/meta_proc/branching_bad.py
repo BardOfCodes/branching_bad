@@ -160,6 +160,7 @@ class BranchingBAD(NaiveBOOTAD):
         return new_expression_bank_set, add_macros_set
 
     def compare_to_best(self, outer_iter, epoch, inner_iter, final_metrics):
+        _ = super(NaiveBOOTAD, self).compare_to_best(outer_iter, epoch, inner_iter, final_metrics)
         final_score = final_metrics["score"]
         index = self.era%self.n_branches
         best_score = self.best_scores[index]
