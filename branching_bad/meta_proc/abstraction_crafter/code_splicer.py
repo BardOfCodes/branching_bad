@@ -407,8 +407,9 @@ class BootADSplicer(MergeSplicerCache):
                     if add:
                         # start, end = node['subexpr_info']['command_ids']
                         sub_cmds = node['subexpr_info']['commands']
-                        subexpression = graph_compiler.cmd_to_expression(
-                            sub_cmds)
+                        # subexpression = graph_compiler.cmd_to_expression(
+                        #     sub_cmds)
+                        subexpression = base_parser.get_expression(sub_cmds)
                         shape = node['subexpr_info']['canonical_shape']
                         node_item = {'canonical_shape': shape,
                                      'commands': node['subexpr_info']['commands'],

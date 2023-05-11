@@ -11,6 +11,7 @@ class CSG2DExecutor:
     def __init__(self, config, device):
 
         self.resolution = config.RESOLUTION
+        self.device = device
         self.parser = CSG2DParser(device)
         self.compiler = CSG2DCompiler(self.resolution, device)
 
@@ -85,12 +86,28 @@ class CSG2DExecutor:
 
         return pred_canvas
 
+    def temp_execute(self, expression):
+
+        parsed_graphs, draw_count = self.parser.parse(expression)
+
+        draw_transforms, inversion_array, intersection_matrix = self.compiler.fast_compile(
+            parsed_graphs, draw_count)
+        inversion_array = inversion_array.to(self.device)
+        intersection_matrix = intersection_matrix.to(self.device)
+        canvas = self.compiler.evaluate(
+            draw_transforms, inversion_array, intersection_matrix)
+
+        canvas = canvas.reshape(self.resolution, self.resolution)
+        canvas = (canvas <= 0).float()
+
+        return canvas
 
 class MacroExecutor(CSG2DExecutor):
 
     def __init__(self, config, device):
 
         self.resolution = config.RESOLUTION
+        self.device = device
         self.parser = MacroParser(device)
         self.compiler = CSG2DCompiler(self.resolution, device)
 

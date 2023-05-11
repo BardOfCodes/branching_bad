@@ -34,9 +34,11 @@ class BranchingBAD(NaiveBOOTAD):
         outer_loop_saturation = False
         if self.reload_latest:
             self.era, expression_bank = self.load_with_dsl(self.era)
+            self.era += self.n_branches
         else:
             self.era = 0
             expression_bank = None
+        
         while (not outer_loop_saturation):
             # load the data:
             _, expression_bank = self.load_with_dsl(self.era)
@@ -48,7 +50,7 @@ class BranchingBAD(NaiveBOOTAD):
                 if expression_bank is None:
                     expression_bank = super(
                         NaiveBOOTAD, self).start_experiment(expression_bank, cutshort=True)
-                    plad_dsl_score = self.get_dsl_scores(expression_bank)
+                plad_dsl_score = self.get_dsl_scores(expression_bank)
 
                 self.save_with_dsl(self.dummy_era, expression_bank, dummy=True)
                 new_expression_banks, new_macros_set = self.craft_branching_abstractions(
@@ -79,7 +81,7 @@ class BranchingBAD(NaiveBOOTAD):
             print("PLAD step increased score from {} to {}".format(
                 original_dsl_score, plad_dsl_score))
             
-            self.save_with_dsl(self.era, expr_bank)
+            self.save_with_dsl(self.era, expression_bank)
 
             # saving:
             if self.era % self.n_branches == (self.n_branches - 1):

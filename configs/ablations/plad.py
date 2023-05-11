@@ -13,9 +13,9 @@ class PLADConfFactory(CNF):
         config.EXPERIMENT_MODE = "PLAD"
         config.PLAD = CN()
         config.PLAD.INNER_PATIENCE = 5
-        config.PLAD.OUTER_PATIENCE = 1
-        config.PLAD.MAX_INNER_ITER = 7
-        config.PLAD.MAX_OUTER_ITER = 2
+        config.PLAD.OUTER_PATIENCE = 7
+        config.PLAD.MAX_INNER_ITER = 2
+        config.PLAD.MAX_OUTER_ITER = 1
         config.PLAD.N_EXPR_PER_ENTRY = 3
 
         config.TRAIN.DATASET.NAME = "CADCSG2DDataset"
