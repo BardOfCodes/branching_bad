@@ -172,14 +172,14 @@ class BootADSplicer(MergeSplicerCache):
                 new_rewards = th.logical_and(pred_canvases, target).sum(1).sum(
                     1)/th.logical_or(pred_canvases, target).sum(1).sum(1)
                 # bulk execute the new expressions.
-
+                new_rewards = new_rewards ** 2
                 value, index = th.topk(new_rewards, k=max_count)
 
                 for ind, index in enumerate(index):
                     if value[ind] >= (previous_reward - self.length_tax_rate * len(expression)):
                         cur_expression = new_expressions[index]
                         new_iou = value[ind].item()
-                        new_score = new_iou + \
+                        new_score = new_iou ** 0.5 + \
                             self.length_tax_rate * len(cur_expression)
                         new_score = new_score
                         expr_obj = dict(expression=cur_expression,
@@ -227,7 +227,7 @@ class BootADSplicer(MergeSplicerCache):
             new_iou = th.logical_and(output, target).sum(
             )/th.logical_or(output, target).sum()
             new_iou = new_iou.item()
-            new_score = new_iou + self.length_tax_rate * len(expression)
+            new_score = new_iou **2 + self.length_tax_rate * len(expression)
             new_score += self.novelty_reward
             # add to bank with new performance
             expr_obj = dict(expression=expression,

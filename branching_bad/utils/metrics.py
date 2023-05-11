@@ -76,7 +76,7 @@ class StatEstimator:
 
         iou = th.logical_and(all_preds, all_targets).sum(
             1).float() / th.logical_or(all_preds, all_targets).sum(1).float()
-        all_scores = iou + self.length_weight * all_lengths + self.novelty_score_weight * all_novelty_score
+        all_scores = iou ** 2 + self.length_weight * all_lengths + self.novelty_score_weight * all_novelty_score
         # all_scores = all_scores.cpu().numpy()
         iou = iou.cpu().numpy()
 

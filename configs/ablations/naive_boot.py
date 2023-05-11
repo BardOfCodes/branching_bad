@@ -13,8 +13,6 @@ class NaiveBootConfFactory(CNF):
         config = PLADConfFactory(name, machine).config
         config.EXPERIMENT_MODE = "NaiveBOOTAD"
         config.MODEL.LOAD_WEIGHTS = os.path.join(config.MACHINE_DIR, "checkpoints/PretrainTEST/best_model.pt")
-        # config.MODEL.LOAD_WEIGHTS = os.path.join(config.MACHINE_DIR, "checkpoints/NaiveBOOT_1/best_model.pt")
-        
         config.ABSTRACTION = CN()
         config.ABSTRACTION.NAME = "CS"
         config.ABSTRACTION.CONFIG_FILE = os.path.join(config.SIRI_PATH, "configs/ablations/finals/final_srt.py")
@@ -29,14 +27,14 @@ class NaiveBootConfFactory(CNF):
         config.ABSTRACTION.TASK_WEIGHT = 1
         config.ABSTRACTION.DSL_SCORE_TOLERANCE = - 1e-3
         config.ABSTRACTION.DSL_PATIENCE = 10
-        config.ABSTRACTION.DELETE_THRESHOLD = 0.01
+        config.ABSTRACTION.DELETE_THRESHOLD = 0.02
         
         config.ABSTRACTION.CS_SPLICER = CN()
         config.ABSTRACTION.CS_SPLICER.LENGTH_TAX = config.OBJECTIVE.LENGTH_TAX
         config.ABSTRACTION.CS_SPLICER.MACRO_PER_ERA = 3
         config.ABSTRACTION.CS_SPLICER.NOVELTY_REWARD = 0# 0.15
         config.ABSTRACTION.CS_SPLICER.MERGE_BIT_DISTANCE = 5
-        config.ABSTRACTION.CS_SPLICER.MAX_NEW_PERCENTAGE = 0.5# 0.5
+        config.ABSTRACTION.CS_SPLICER.MAX_NEW_PERCENTAGE = 0.25# 0.5
         config.ABSTRACTION.CS_SPLICER.LENGTH_FACTOR = 0.5
         
         config.OBJECTIVE.NOVEL_CMD_WEIGHT = 5

@@ -7,7 +7,7 @@ from configs.ablations.naive_boot import NaiveBootConfFactory
 
 class BranchingBootConfFactory(CNF):
 
-    def __init__(self, name="BranchingBad", machine="local"):
+    def __init__(self, name="MAIN3", machine="local"):
         
         config = NaiveBootConfFactory(name, machine).config
         config.EXPERIMENT_MODE = "BranchingBAD"
