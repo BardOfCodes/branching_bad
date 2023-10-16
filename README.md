@@ -17,7 +17,7 @@ Library learning where the right programs also have to be discovered from scratc
 3) Minor delta: Branching BAD (BAD with branching).
 
 ![BAD](./assets/branching_manyworlds.png)
-The branching many-world bootstrapped abstraction discovery 'attempted' in this project. The primary idea being that we don't need to be locked into the abstractions we discover.
+The branching many-world bootstrapped Abstraction Discovery 'attempted' in this project. The primary idea being that we don't need to be locked into the abstractions we discover.
 
 ## System
 
@@ -28,7 +28,7 @@ The code resembles this system.
 
 ## Todos at some point
 
-1) I think Abstraction discovery using CG is a good idea. I think its still missing some ingredients which can make it work more effectively.
+1) I think Abstraction Discovery using CG is a good idea. I think its still missing some ingredients which can make it work more effectively.
 2) A big drop of performance in this work is because of the noticiably weaker Neural Model I adapted -> No conditional signals between the parameters predicted for each command. This is not a good idea (Lesson learnt!). But improvements can be expected by just changing the neural model.
 3) Adapt the code to use GeoLIPI. A lot of the language level code can be used from the GeoLIPI code base. That can infact make this code base cleaner (and perhaps adapt to other langauges as well).
 4) The idea of Branching the LL step is really essentially a question of: a) heavily searched right abstraction choices vs b) quick and dirty noisy abstractions with the possibility of backtracking. Quick and Dirty with backtracking seems more deployable.
