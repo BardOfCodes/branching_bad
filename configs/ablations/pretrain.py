@@ -84,7 +84,7 @@ class PretrainConfFactory(CNF):
         config.NOTIFICATION = CN()
         config.NOTIFICATION.ENABLE = False
         config.NOTIFICATION.CHANNEL = "aditya"
-        config.NOTIFICATION.WEBHOOK = "https://hooks.slack.com/services/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"
+        config.NOTIFICATION.WEBHOOK = os.environ.get("SLACK_WEBHOOK")
 
         config.LOGGER = CN()
         config.LOGGER.LOG_DIR = os.path.join(MACHINE_DIR, "logs", config.NAME)
