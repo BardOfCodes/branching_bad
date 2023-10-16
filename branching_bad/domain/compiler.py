@@ -439,8 +439,6 @@ class CSG2DCompiler:
 
     def execute_graph(self, cmd_list, primitive_dict, draw_count):
 
-        # USING pyeda
-        # create propositional expression:
         canvas_stack = []
         # Given prefix notation - do postfix traversal in reverse order
         for cmd in cmd_list[::-1]:
